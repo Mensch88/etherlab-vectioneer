@@ -43,7 +43,6 @@
 #include <linux/version.h>
 #include <linux/hrtimer.h>
 #include <linux/vmalloc.h>
-#include <linux/freezer.h>
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
 #include <uapi/linux/sched/types.h> // struct sched_param
@@ -1784,21 +1783,13 @@ static ktime_t ec_master_nanosleep_timer(struct hrtimer_sleeper *t, ktime_t idea
     hrtimer_set_expires(&t->timer, ideal_time);
 
     do {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
-        set_current_state(TASK_INTERRUPTIBLE|TASK_FREEZABLE);
-        hrtimer_start_expires(&t->timer, HRTIMER_MODE_ABS);
-
-        if (likely(t->task))
-            schedule();
-#else
         set_current_state(TASK_INTERRUPTIBLE);
         hrtimer_start_expires(&t->timer, HRTIMER_MODE_ABS);
 
         if (likely(t->task))
-            freezable_schedule();
-#endif
-        hrtimer_cancel(&t->timer);
+            schedule();
 
+        hrtimer_cancel(&t->timer);
     } while (t->task && !signal_pending(current));
     __set_current_state(TASK_RUNNING);
 
