@@ -2588,7 +2588,9 @@ static ATTRIBUTES int ec_ioctl_sync_ref(
         return -EPERM;
     }
 
+    ec_lock_down(&master->io_sem);
     ecrt_master_sync_reference_clock(master);
+    ec_lock_up(&master->io_sem);
     return 0;
 }
 
@@ -2613,7 +2615,9 @@ static ATTRIBUTES int ec_ioctl_sync_ref_to(
         return -EFAULT;
     }
 
+    ec_lock_down(&master->io_sem);
     ecrt_master_sync_reference_clock_to(master, time);
+    ec_lock_up(&master->io_sem);
     return 0;
 }
 
@@ -2633,7 +2637,9 @@ static ATTRIBUTES int ec_ioctl_sync_slaves(
         return -EPERM;
     }
 
+    ec_lock_down(&master->io_sem);
     ecrt_master_sync_slave_clocks(master);
+    ec_lock_up(&master->io_sem);
     return 0;
 }
 
@@ -2684,7 +2690,9 @@ static ATTRIBUTES int ec_ioctl_64bit_ref_clock_time_queue(
         return -EPERM;
     }
 
+    ec_lock_down(&master->io_sem);
     ecrt_master_64bit_reference_clock_time_queue(master);
+    ec_lock_up(&master->io_sem);
     return 0;
 }
 
@@ -2735,7 +2743,9 @@ static ATTRIBUTES int ec_ioctl_sync_mon_queue(
         return -EPERM;
     }
 
+    ec_lock_down(&master->io_sem);
     ecrt_master_sync_monitor_queue(master);
+    ec_lock_up(&master->io_sem);
     return 0;
 }
 
@@ -3936,7 +3946,9 @@ static ATTRIBUTES int ec_ioctl_domain_queue(
         return -ENOENT;
     }
 
+    ec_lock_down(&master->io_sem);
     ecrt_domain_queue(domain);
+    ec_lock_up(&master->io_sem);
 
     ec_ioctl_lock_up(&master->master_sem);
 
@@ -4954,7 +4966,9 @@ static ATTRIBUTES int ec_ioctl_voe_exec(
         return -ENOENT;
     }
 
+    ec_lock_down(&master->io_sem);
     data.state = ecrt_voe_handler_execute(voe);
+    ec_lock_up(&master->io_sem);
     if (data.state == EC_REQUEST_SUCCESS && voe->dir == EC_DIR_INPUT)
         data.size = ecrt_voe_handler_data_size(voe);
     else
