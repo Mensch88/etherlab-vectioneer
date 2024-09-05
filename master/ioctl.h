@@ -202,9 +202,7 @@
 #define EC_IOCTL_SOE_REQUEST_DATA     EC_IOWR(0x84, ec_ioctl_soe_request_t)
 #define EC_IOCTL_SOE_REQUEST_IDN      EC_IOWR(0x85, ec_ioctl_soe_request_t)
 
-#ifdef EC_EOE
 #define EC_IOCTL_SC_EOE               EC_IOW(0x86, ec_ioctl_sc_eoe_t)
-#endif
 
 /*****************************************************************************/
 
@@ -796,21 +794,6 @@ typedef struct {
 
 /*****************************************************************************/
 
-#ifdef EC_EOE
-typedef struct {
-    // inputs
-    uint32_t config_index;
-    unsigned char mac_address[ETH_ALEN];
-    uint32_t ip_address;
-    uint32_t subnet_mask;
-    uint32_t gateway;
-    uint32_t dns;
-    char name[EC_MAX_HOSTNAME_SIZE];
-} ec_ioctl_sc_eoe_t;
-#endif
-
-/*****************************************************************************/
-
 typedef struct {
     // inputs
     uint32_t domain_index;
@@ -928,6 +911,19 @@ typedef struct {
     /* uint32_t timeout; */
     ec_request_state_t state;
 } ec_ioctl_soe_request_t;
+
+/*****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+    unsigned char mac_address[ETH_ALEN];
+    uint32_t ip_address;
+    uint32_t subnet_mask;
+    uint32_t gateway;
+    uint32_t dns;
+    char name[EC_MAX_HOSTNAME_SIZE];
+} ec_ioctl_sc_eoe_t;
 
 /*****************************************************************************/
 

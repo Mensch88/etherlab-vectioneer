@@ -197,10 +197,6 @@
  */
 #define EC_HAVE_SYNC_TO
 
-/** Defined if the method ecrt_slave_config_eoe() is available.
- */
-#define EC_HAVE_SLAVE_CONFIG_EOE
-
 /*****************************************************************************/
 
 /** End of list marker.
@@ -1724,25 +1720,6 @@ void ecrt_slave_config_dc(
         int32_t sync1_shift /**< SYNC1 shift time [ns]. */
         );
 
-#if !defined(__KERNEL__) || defined(EC_EOE)
-/** Add an EoE configuration.
- *
- * An EoE Configuration is stored in the slave configuration and is
- * downloaded to the slave whenever the slave is being configured by the
- * master. This usually happens once on master activation, but can be repeated
- * subsequently, for example after the slave's power supply failed.
- */
-int ecrt_slave_config_eoe(
-        ec_slave_config_t *sc, /**< Slave configuration. */
-        const unsigned char mac_address[ETH_ALEN], /**< MAC Address. */
-        uint32_t ip_address, /**< IP address in network byte order. */
-        uint32_t subnet_mask, /**< Subnet mask in network byte order. */
-        uint32_t gateway, /**< (Default) Gateway in network byte order. */
-        uint32_t dns, /**< DNS Server in network byte order. */
-        const char* name /**< DNS Name. */
-        );
-#endif /* !defined(__KERNEL__) || defined(EC_EOE) */
-
 /** Add an SDO configuration.
  *
  * An SDO configuration is stored in the slave configuration object and is
@@ -3022,6 +2999,31 @@ void ecrt_reg_request_readwrite(
         uint16_t address, /**< Register address. */
         size_t size /**< Size to read-write. */
         );
+
+/*****************************************************************************
+ * Auxiliary types & methods.
+ ****************************************************************************/
+
+/** Defined if the method ecrt_slave_config_eoe() is available.
+ */
+#define EC_HAVE_SLAVE_CONFIG_EOE
+
+/** Add an EoE configuration.
+ *
+ * An EoE Configuration is stored in the slave configuration and is
+ * downloaded to the slave whenever the slave is being configured by the
+ * master. This usually happens once on master activation, but can be repeated
+ * subsequently, for example after the slave's power supply failed.
+ */
+int ecrt_slave_config_eoe(
+        ec_slave_config_t *sc, /**< Slave configuration. */
+        const unsigned char mac_address[ETH_ALEN], /**< MAC Address. */
+        uint32_t ip_address, /**< IP address in network byte order. */
+        uint32_t subnet_mask, /**< Subnet mask in network byte order. */
+        uint32_t gateway, /**< (Default) Gateway in network byte order. */
+        uint32_t dns, /**< DNS Server in network byte order. */
+        const char* name /**< DNS Name. */
+);
 
 /*****************************************************************************/
 

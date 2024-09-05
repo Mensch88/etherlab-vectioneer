@@ -1553,15 +1553,14 @@ int ecrt_slave_config_idn(ec_slave_config_t *sc, uint8_t drive_no,
 
 /*****************************************************************************/
 
-#ifdef EC_EOE
 int ecrt_slave_config_eoe(ec_slave_config_t *sc,
         const unsigned char mac_address[ETH_ALEN],
         uint32_t ip_address, uint32_t subnet_mask,
         uint32_t gateway, uint32_t dns, const char* name)
 {
+#ifdef EC_EOE
     ec_slave_t *slave = sc->slave;
     ec_eoe_request_t *req;
-    int cnt;
 
     EC_CONFIG_DBG(sc, 1, "%s(sc = 0x%p, mac = %pM, ip = %pI4, "
                          "netmask = %pI4, gw = %pI4, dns = %pI4, "
@@ -1583,12 +1582,7 @@ int ecrt_slave_config_eoe(ec_slave_config_t *sc,
     ec_eoe_request_init(req);
 
     memcpy(req->mac_address, mac_address, ETH_ALEN);
-    cnt = 0;
-    req->mac_address_included = 0;
-    while (req->mac_address_included == 0 && cnt < ETH_ALEN) {
-        req->mac_address_included = (mac_address[cnt] != 0) ? 1 : 0;
-        ++cnt;
-    }
+    req->mac_address_included = !ec_mac_is_zero(mac_address);
 
     req->ip_address = ip_address;
     req->ip_address_included = ip_address != 0;
@@ -1609,10 +1603,11 @@ int ecrt_slave_config_eoe(ec_slave_config_t *sc,
     ec_lock_down(&sc->master->master_sem);
     list_add_tail(&req->list, &sc->eoe_configs);
     ec_lock_up(&sc->master->master_sem);
-
     return 0;
-}
+#else
+    return -ENOPROTOOPT;
 #endif
+}
 
 /*****************************************************************************/
 
@@ -1643,9 +1638,7 @@ EXPORT_SYMBOL(ecrt_slave_config_create_voe_handler);
 EXPORT_SYMBOL(ecrt_slave_config_create_reg_request);
 EXPORT_SYMBOL(ecrt_slave_config_state);
 EXPORT_SYMBOL(ecrt_slave_config_idn);
-#ifdef EC_EOE
 EXPORT_SYMBOL(ecrt_slave_config_eoe);
-#endif
 
 /** \endcond */
 

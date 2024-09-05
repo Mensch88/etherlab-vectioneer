@@ -1038,7 +1038,7 @@ void ec_fsm_slave_config_enter_eoe_conf_preop(
 
     // No EoE configuration to be applied?
     if (list_empty(&slave->config->eoe_configs)) { // skip EoE configuration
-        ec_fsm_slave_config_enter_pdo_sync(fsm, datagram);
+        ec_fsm_slave_config_enter_pdo_conf(fsm, datagram);
         return;
     }
 

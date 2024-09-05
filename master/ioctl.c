@@ -3314,7 +3314,6 @@ static ATTRIBUTES int ec_ioctl_sc_sdo(
 
 /*****************************************************************************/
 
-#ifdef EC_EOE
 /** Configures EoE.
  *
  * \return Zero on success, otherwise a negative error code.
@@ -3325,6 +3324,7 @@ static ATTRIBUTES int ec_ioctl_sc_eoe(
         ec_ioctl_context_t *ctx /**< Private data structure of file handle. */
 )
 {
+#ifdef EC_EOE
     ec_ioctl_sc_eoe_t data;
     ec_slave_config_t *sc;
 
@@ -3346,9 +3346,10 @@ static ATTRIBUTES int ec_ioctl_sc_eoe(
 
     return ecrt_slave_config_eoe(sc, data.mac_address, data.ip_address,
                 data.subnet_mask, data.gateway, data.dns, data.name);
-
-}
+#else
+    return -ENOPROTOOPT;
 #endif
+}
 
 /*****************************************************************************/
 
@@ -6355,6 +6356,7 @@ long EC_IOCTL(
             }
             ret = ec_ioctl_eoe_delif(master, arg, ctx);
             break;
+#endif
         case EC_IOCTL_SC_EOE:
             if (!ctx->writable) {
                 ret = -EPERM;
@@ -6362,7 +6364,6 @@ long EC_IOCTL(
             }
             ret = ec_ioctl_sc_eoe(master, arg, ctx);
             break;
-#endif
         case EC_IOCTL_MBOX_GATEWAY:
             if (!ctx->writable) {
                 ret = -EPERM;
