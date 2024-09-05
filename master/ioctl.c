@@ -2408,14 +2408,12 @@ static ATTRIBUTES int ec_ioctl_send(
     if (ec_ioctl_lock_down_interruptible(&master->master_sem))
         return -EINTR;
 
-#if defined(EC_RTDM) && defined(EC_EOE)
+#if defined(EC_RTDM)
     sent_bytes = ecrt_master_send(master);
 #else
-    if (master->send_cb != NULL) {
-        master->send_cb(master->cb_data);
-        sent_bytes = 0;
-    } else
-        sent_bytes = ecrt_master_send(master);
+    ec_lock_down(&master->io_sem);
+    sent_bytes = ecrt_master_send(master);
+    ec_lock_up(&master->io_sem);
 #endif
 
     ec_ioctl_lock_up(&master->master_sem);
@@ -2448,13 +2446,12 @@ static ATTRIBUTES int ec_ioctl_receive(
     if (ec_ioctl_lock_down_interruptible(&master->master_sem))
         return -EINTR;
 
-#if defined(EC_RTDM) && defined(EC_EOE)
+#if defined(EC_RTDM)
     ecrt_master_receive(master);
 #else
-    if (master->receive_cb != NULL)
-        master->receive_cb(master->cb_data);
-    else
-        ecrt_master_receive(master);
+    ec_lock_down(&master->io_sem);
+    ecrt_master_receive(master);
+    ec_lock_up(&master->io_sem);
 #endif
 
     ec_ioctl_lock_up(&master->master_sem);
@@ -2463,8 +2460,6 @@ static ATTRIBUTES int ec_ioctl_receive(
 }
 
 /*****************************************************************************/
-
-#if defined(EC_RTDM) && defined(EC_EOE)
 
 /** Send frames ext.
  *
@@ -2482,7 +2477,13 @@ static ATTRIBUTES int ec_ioctl_send_ext(
         return -EPERM;
     }
 
+#if defined(EC_RTDM)
     sent_bytes = ecrt_master_send_ext(master);
+#else
+    ec_lock_down(&master->io_sem);
+    sent_bytes = ecrt_master_send_ext(master);
+    ec_lock_up(&master->io_sem);
+#endif
 
     if (copy_to_user((void __user *) arg, &sent_bytes, sizeof(sent_bytes))) {
         return -EFAULT;
@@ -2490,8 +2491,6 @@ static ATTRIBUTES int ec_ioctl_send_ext(
 
     return 0;
 }
-
-#endif
 
 /*****************************************************************************/
 
@@ -5948,7 +5947,6 @@ long EC_IOCTL(
             }
             ret = ec_ioctl_receive(master, arg, ctx);
             break;
-#if defined(EC_RTDM) && defined(EC_EOE)
         case  EC_IOCTL_SEND_EXT:
             if (!ctx->writable) {
                 ret = -EPERM;
@@ -5956,7 +5954,6 @@ long EC_IOCTL(
             }
             ret = ec_ioctl_send_ext(master, arg, ctx);
             break;
-#endif
         case EC_IOCTL_MASTER_STATE:
             ret = ec_ioctl_master_state(master, arg, ctx);
             break;

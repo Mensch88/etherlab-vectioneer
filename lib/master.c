@@ -764,8 +764,6 @@ void ecrt_master_receive(ec_master_t *master)
 
 /****************************************************************************/
 
-#if defined(EC_RTDM) && defined(EC_EOE)
-
 size_t ecrt_master_send_ext(ec_master_t *master)
 {
     int ret;
@@ -781,6 +779,8 @@ size_t ecrt_master_send_ext(ec_master_t *master)
 }
 
 /****************************************************************************/
+
+#if defined(EC_RTDM) && defined(EC_EOE)
 
 int ecrt_master_eoe_is_open(ec_master_t *master)
 {

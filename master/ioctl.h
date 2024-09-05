@@ -182,8 +182,8 @@
 #if defined(EC_RTDM) && defined(EC_EOE)
 #define EC_IOCTL_EOE_IS_OPEN            EC_IO(0x6d)
 #define EC_IOCTL_EOE_PROCESS            EC_IO(0x6e)
-#define EC_IOCTL_SEND_EXT               EC_IO(0x6f)
 #endif
+#define EC_IOCTL_SEND_EXT               EC_IO(0x6f)
 
 #ifdef EC_EOE
 #define EC_IOCTL_EOE_ADDIF            EC_IOWR(0x70, ec_ioctl_eoe_if_t)
