@@ -1197,3 +1197,32 @@ int ecrt_master_write_foe(ec_master_t *master, uint16_t position,
 }
 
 /****************************************************************************/
+
+int ecrt_master_mac_address(ec_master_t *master, unsigned int dev_idx, unsigned char mac_address[ETH_ALEN])
+{
+    ec_ioctl_master_t data;
+    int ret;
+
+    if (mac_address == NULL) {
+        EC_PRINT_ERR("Failed to get master mac address (index = %u), array is NULL\n", dev_idx);
+        return -EFAULT;
+    }
+
+    if (dev_idx >= EC_MAX_NUM_DEVICES) {
+        EC_PRINT_ERR("Failed to get master mac address (index = %u), incorrect device index\n", dev_idx);
+        return -EFAULT;
+    }
+
+    ret = ioctl(master->fd, EC_IOCTL_MASTER, &data);
+    if (EC_IOCTL_IS_ERROR(ret)) {
+        EC_PRINT_ERR("Failed to get master mac address (index = %u): %s\n",
+                     dev_idx, strerror(EC_IOCTL_ERRNO(ret)));
+        return -EC_IOCTL_ERRNO(ret);
+    }
+
+    memcpy(mac_address, data.devices[dev_idx].address, ETH_ALEN);
+
+    return 0;
+}
+
+/****************************************************************************/

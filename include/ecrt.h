@@ -3025,6 +3025,24 @@ int ecrt_slave_config_eoe(
         const char* name /**< DNS Name. */
 );
 
+#ifndef __KERNEL__
+/** Obtains master mac address information.
+ *
+ * No memory is allocated on the heap in
+ * this function.
+ *
+ * \attention The pointer to this data must point to a valid variable.
+ *
+ * \return 0 in case of success, else < 0
+ */
+int ecrt_master_mac_address(
+        ec_master_t *master, /**< EtherCAT master */
+        unsigned int dev_idx, /**< Index of the device (0 = main device, 1 =
+                                first backup device, ...). */
+        unsigned char mac_address[ETH_ALEN] /**< MAC Address */
+);
+#endif
+
 /*****************************************************************************/
 
 #ifdef __cplusplus
