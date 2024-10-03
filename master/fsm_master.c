@@ -288,7 +288,6 @@ void ec_fsm_master_state_broadcast(
 
         ec_master_slaves_not_available(master);
 #ifdef EC_EOE
-        ec_master_eoe_stop(master);
         ec_master_clear_eoe_handlers(master, 0);
 #endif
         ec_master_clear_slaves(master);
@@ -348,7 +347,6 @@ void ec_fsm_master_state_broadcast(
 
             ec_master_slaves_not_available(master);
 #ifdef EC_EOE
-            ec_master_eoe_stop(master);
             ec_master_clear_eoe_handlers(master, 0);
 #endif
             ec_master_clear_slaves(master);
@@ -1076,8 +1074,9 @@ void ec_fsm_master_state_scan_slave(
     ec_master_calc_dc(master);
 
 #ifdef EC_EOE
-    // check if EoE processing has to be started
-    ec_master_eoe_start(master);
+    if (!master->eoe_thread) {
+        ec_master_eoe_start(master);
+    }
 #endif
 
     if (master->slave_count) {

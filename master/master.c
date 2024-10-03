@@ -2175,17 +2175,12 @@ int ec_master_eoe_process(ec_master_t *master /**< EtherCAT master */)
                (eoe->slave->current_state == EC_SLAVE_STATE_OP) ) ) {
             ec_eoe_run(eoe);
             if (eoe->queue_datagram) {
+                ec_eoe_queue(eoe);
                 sth_to_send = EOE_STH_TO_SEND;
             }
             if (!ec_eoe_is_idle(eoe)) {
                 sth_pending = EOE_STH_PENDING;
             }
-        }
-    }
-
-    if (sth_to_send) {
-        list_for_each_entry(eoe, &master->eoe_handlers, list) {
-            ec_eoe_queue(eoe);
         }
     }
     ec_lock_up(&master->master_sem);
@@ -2237,6 +2232,7 @@ static int ec_master_eoe_thread(void *priv_data)
                    (eoe->slave->current_state == EC_SLAVE_STATE_OP) ) ) {
                 ec_eoe_run(eoe);
                 if (eoe->queue_datagram) {
+                    ec_eoe_queue(eoe);
                     sth_to_send = 1;
                 }
                 if (!ec_eoe_is_idle(eoe)) {
@@ -2247,12 +2243,6 @@ static int ec_master_eoe_thread(void *priv_data)
         ec_lock_up(&master->master_sem);
 
         if (sth_to_send) {
-            ec_lock_down(&master->master_sem);
-            list_for_each_entry(eoe, &master->eoe_handlers, list) {
-                ec_eoe_queue(eoe);
-            }
-            ec_lock_up(&master->master_sem);
-
             // (try to) send datagrams
             master->send_cb(master->cb_data);
         }
