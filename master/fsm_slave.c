@@ -370,9 +370,9 @@ int ec_fsm_slave_action_config(
                     slave->force_config ? " (forced)" : "");
         }
 
-        ec_lock_down(&slave->master->config_sem);
-        ++slave->master->config_busy;
-        ec_lock_up(&slave->master->config_sem);
+        if (atomic_fetch_inc(&slave->master->config_busy) == 0) {
+            EC_MASTER_DBG(slave->master, 1, "Slave configuration busy.\n");
+        }
 
         fsm->state = ec_fsm_slave_state_config;
 #ifdef EC_QUICK_OP
@@ -438,13 +438,11 @@ void ec_fsm_slave_state_config(
 
     slave->force_config = 0;
 
-    ec_lock_down(&slave->master->config_sem);
-    if (slave->master->config_busy) {
-        if (--slave->master->config_busy == 0) {
-            wake_up_interruptible(&slave->master->config_queue);
-        }
+    if (atomic_fetch_add_unless(&slave->master->config_busy, -1, 0) == 1) {
+        // only on transition from 1 to 0
+        wake_up_interruptible(&slave->master->config_queue);
+        EC_MASTER_DBG(slave->master, 1, "Slave configuration idle (all ready).\n");
     }
-    ec_lock_up(&slave->master->config_sem);
 
     fsm->state = ec_fsm_slave_state_ready;
 }

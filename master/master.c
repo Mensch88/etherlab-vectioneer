@@ -196,8 +196,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     ec_lock_init(&master->scan_sem);
     init_waitqueue_head(&master->scan_queue);
 
-    master->config_busy = 0;
-    ec_lock_init(&master->config_sem);
+    atomic_set_release(&master->config_busy, 0);
     init_waitqueue_head(&master->config_queue);
 
     INIT_LIST_HEAD(&master->datagram_queue);
@@ -595,6 +594,11 @@ void ec_master_slaves_available(ec_master_t *master)
 }
 
 /*****************************************************************************/
+static inline unsigned int ec_master_config_busy(ec_master_t *master) {
+    return atomic_read_acquire(&master->config_busy) ? 1U : 0U;
+}
+
+/*****************************************************************************/
 
 /** Clear all slaves.
  */
@@ -858,13 +862,11 @@ int ec_master_enter_operation_phase(
 
     EC_MASTER_DBG(master, 1, "IDLE -> OPERATION.\n");
 
-    ec_lock_down(&master->config_sem);
-    if (master->config_busy) {
-        ec_lock_up(&master->config_sem);
+    if (ec_master_config_busy(master)) {
 
         // wait for slave configuration to complete
         ret = wait_event_interruptible(master->config_queue,
-                    !master->config_busy);
+                    !ec_master_config_busy(master));
         if (ret) {
             EC_MASTER_INFO(master, "Finishing slave configuration"
                     " interrupted by signal.\n");
@@ -873,8 +875,6 @@ int ec_master_enter_operation_phase(
 
         EC_MASTER_DBG(master, 1, "Waiting for pending slave"
                 " configuration returned.\n");
-    } else {
-        ec_lock_up(&master->config_sem);
     }
 
     ec_lock_down(&master->scan_sem);

@@ -269,9 +269,7 @@ struct ec_master {
     wait_queue_head_t scan_queue; /**< Queue for processes that wait for
                                     slave scanning. */
 
-    unsigned int config_busy; /**< State of slave configuration. */
-    ec_lock_t config_sem; /**< Semaphore protecting the \a config_busy
-                                   variable and the allow_config flag. */
+    atomic_t config_busy; /**< State of slave configuration. */
     wait_queue_head_t config_queue; /**< Queue for processes that wait for
                                       slave configuration. */
 

@@ -293,9 +293,10 @@ void ec_fsm_master_state_broadcast(
         ec_master_clear_slaves(master);
         ec_master_clear_sii_images(master);
 
-        ec_lock_down(&master->config_sem);
-        master->config_busy = 0;
-        ec_lock_up(&master->config_sem);
+        if (atomic_xchg(&master->config_busy, 0)) {
+            wake_up_interruptible(&master->config_queue);
+            EC_MASTER_DBG(master, 1, "Slave configuration idle (link down).\n");
+        }
 
         for (dev_idx = EC_DEVICE_MAIN;
                 dev_idx < ec_master_num_devices(master); dev_idx++) {
@@ -352,9 +353,10 @@ void ec_fsm_master_state_broadcast(
             ec_master_clear_slaves(master);
             ec_master_clear_sii_images(master);
 
-            ec_lock_down(&master->config_sem);
-            master->config_busy = 0;
-            ec_lock_up(&master->config_sem);
+            if (atomic_xchg(&master->config_busy, 0)) {
+                wake_up_interruptible(&master->config_queue);
+                EC_MASTER_DBG(master, 1, "Slave configuration idle (rescan).\n");
+            }
 
             for (dev_idx = EC_DEVICE_MAIN;
                     dev_idx < ec_master_num_devices(master); dev_idx++) {
