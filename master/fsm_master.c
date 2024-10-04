@@ -331,15 +331,9 @@ void ec_fsm_master_state_broadcast(
     }
 
     if (fsm->rescan_required) {
-        ec_lock_down(&master->scan_sem);
-        if (!master->allow_scan) {
-            ec_lock_up(&master->scan_sem);
-        } else {
+        if (!(atomic_cmpxchg(&master->scan_flags, 0, EC_SCAN_FLAG_BUSY) & EC_SCAN_FLAG_DISALLOW)) {
             unsigned int count = 0, next_dev_slave, ring_position;
             ec_device_index_t dev_idx;
-
-            master->scan_busy = 1;
-            ec_lock_up(&master->scan_sem);
 
             // clear all slaves and scan the bus
             fsm->rescan_required = 0;
@@ -365,7 +359,7 @@ void ec_fsm_master_state_broadcast(
 
             if (!count) {
                 // no slaves present -> finish state machine.
-                master->scan_busy = 0;
+                ec_master_fetch_clear_flags(&master->scan_flags, EC_SCAN_FLAG_BUSY);
                 wake_up_interruptible(&master->scan_queue);
                 ec_fsm_master_restart(fsm);
                 return;
@@ -376,7 +370,7 @@ void ec_fsm_master_state_broadcast(
                         (ec_slave_t *) kmalloc(size, GFP_KERNEL))) {
                 EC_MASTER_ERR(master, "Failed to allocate %u bytes"
                         " of slave memory!\n", size);
-                master->scan_busy = 0;
+                ec_master_fetch_clear_flags(&master->scan_flags, EC_SCAN_FLAG_BUSY);
                 wake_up_interruptible(&master->scan_queue);
                 ec_fsm_master_restart(fsm);
                 return;
@@ -966,7 +960,7 @@ void ec_fsm_master_state_clear_addresses(
                 " clearing datagram on %s link: ",
                 ec_device_names[fsm->dev_idx != 0]);
         ec_datagram_print_state(datagram);
-        master->scan_busy = 0;
+        ec_master_fetch_clear_flags(&master->scan_flags, EC_SCAN_FLAG_BUSY);
         wake_up_interruptible(&master->scan_queue);
         ec_fsm_master_restart(fsm);
         return;
@@ -1006,7 +1000,7 @@ void ec_fsm_master_state_dc_measure_delays(
         EC_MASTER_ERR(master, "Failed to receive delay measuring datagram"
                 " on %s link: ", ec_device_names[fsm->dev_idx != 0]);
         ec_datagram_print_state(datagram);
-        master->scan_busy = 0;
+        ec_master_fetch_clear_flags(&master->scan_flags, EC_SCAN_FLAG_BUSY);
         wake_up_interruptible(&master->scan_queue);
         ec_fsm_master_restart(fsm);
         return;
@@ -1064,7 +1058,7 @@ void ec_fsm_master_state_scan_slave(
     EC_MASTER_INFO(master, "Bus scanning completed in %lu ms.\n",
             (jiffies - fsm->scan_jiffies) * 1000 / HZ);
 
-    master->scan_busy = 0;
+    ec_master_fetch_clear_flags(&master->scan_flags, EC_SCAN_FLAG_BUSY);
     wake_up_interruptible(&master->scan_queue);
 
     // Attach slave configurations

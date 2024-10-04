@@ -121,7 +121,7 @@ static ATTRIBUTES int ec_ioctl_master(
 #endif
     io.phase = (uint8_t) master->phase;
     io.active = (uint8_t) master->active;
-    io.scan_busy = master->scan_busy;
+    io.scan_busy = ec_master_scan_busy(master);
 
     ec_lock_up(&master->master_sem);
 

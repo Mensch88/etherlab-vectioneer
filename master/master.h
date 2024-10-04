@@ -146,6 +146,13 @@ typedef enum {
 
 /*****************************************************************************/
 
+typedef enum {
+    EC_SCAN_FLAG_BUSY = (1 << 0),
+    EC_SCAN_FLAG_DISALLOW = (1 << 1)
+} ec_master_scan_flags_t;
+
+/*****************************************************************************/
+
 /** Cyclic statistics.
  */
 typedef struct {
@@ -262,10 +269,7 @@ struct ec_master {
     ec_slave_t *dc_ref_clock; /**< DC reference clock slave. */
 
     unsigned int reboot; /**< Reboot requested. */
-    unsigned int scan_busy; /**< Current scan state. */
-    unsigned int allow_scan; /**< \a True, if slave scanning is allowed. */
-    ec_lock_t scan_sem; /**< Semaphore protecting the \a scan_busy
-                                 variable and the \a allow_scan flag. */
+    atomic_t scan_flags; /**< Current scan state. */
     wait_queue_head_t scan_queue; /**< Queue for processes that wait for
                                     slave scanning. */
 
@@ -391,6 +395,18 @@ void ec_master_slaves_available(ec_master_t *);
 void ec_master_clear_slaves(ec_master_t *);
 void ec_master_clear_sii_images(ec_master_t *);
 void ec_master_reboot_slaves(ec_master_t *);
+
+static inline int ec_master_fetch_set_flags(atomic_t *v, int flags) {
+    return atomic_fetch_or(flags, v);
+}
+
+static inline int ec_master_fetch_clear_flags(atomic_t *v, int flags) {
+    return atomic_fetch_andnot(flags, v);
+}
+
+static inline unsigned int ec_master_scan_busy(ec_master_t *master) {
+    return (atomic_read_acquire(&master->scan_flags) & EC_SCAN_FLAG_BUSY) ? 1U : 0U;
+}
 
 unsigned int ec_master_config_count(const ec_master_t *);
 ec_slave_config_t *ec_master_get_config(

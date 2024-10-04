@@ -191,9 +191,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     master->dc_ref_time = 0ULL;
     master->dc_offset_valid = 0;
 
-    master->scan_busy = 0;
-    master->allow_scan = 1;
-    ec_lock_init(&master->scan_sem);
+    atomic_set_release(&master->scan_flags, 0);
     init_waitqueue_head(&master->scan_queue);
 
     atomic_set_release(&master->config_busy, 0);
@@ -877,16 +875,11 @@ int ec_master_enter_operation_phase(
                 " configuration returned.\n");
     }
 
-    ec_lock_down(&master->scan_sem);
-    master->allow_scan = 0; // 'lock' the slave list
-    if (!master->scan_busy) {
-        ec_lock_up(&master->scan_sem);
-    } else {
-        ec_lock_up(&master->scan_sem);
-
+    /* 'lock' the slave list, and check if was already busy */
+    if (ec_master_fetch_set_flags(&master->scan_flags, EC_SCAN_FLAG_DISALLOW) & EC_SCAN_FLAG_BUSY) {
         // wait for slave scan to complete
         ret = wait_event_interruptible(master->scan_queue,
-                !master->scan_busy);
+                !ec_master_scan_busy(master));
         if (ret) {
             EC_MASTER_INFO(master, "Waiting for slave scan"
                     " interrupted by signal.\n");
@@ -911,7 +904,7 @@ int ec_master_enter_operation_phase(
     return ret;
 
 out_allow:
-    master->allow_scan = 1;
+    ec_master_fetch_clear_flags(&master->scan_flags, EC_SCAN_FLAG_DISALLOW);
 out_return:
     return ret;
 }
@@ -931,7 +924,7 @@ void ec_master_leave_operation_phase(
     }
 
     /* Re-allow scanning for IDLE phase. */
-    master->allow_scan = 1;
+    ec_master_fetch_clear_flags(&master->scan_flags, EC_SCAN_FLAG_DISALLOW);
 
     EC_MASTER_DBG(master, 1, "OPERATION -> IDLE.\n");
 
@@ -1591,7 +1584,7 @@ void ec_master_receive_datagrams(
 void ec_master_output_stats(ec_master_t *master /**< EtherCAT master */)
 {
     if (unlikely(jiffies - master->stats.output_jiffies >= HZ)) {
-        if (!master->scan_busy || (master->debug_level > 0)) {
+        if (!ec_master_scan_busy(master) || (master->debug_level > 0)) {
             master->stats.output_jiffies = jiffies;
             if (master->stats.timeouts) {
                 EC_MASTER_WARN(master, "%u datagram%s TIMED OUT!\n",
@@ -2934,7 +2927,7 @@ int ecrt_master_activate(ec_master_t *master)
     }
 
     /* Allow scanning after a topology change. */
-    master->allow_scan = 1;
+    ec_master_fetch_clear_flags(&master->scan_flags, EC_SCAN_FLAG_DISALLOW);
 
     master->active = 1;
 
@@ -3029,7 +3022,7 @@ void ecrt_master_deactivate(ec_master_t *master)
 
     /* Disallow scanning to get into the same state like after a master
      * request (after ec_master_enter_operation_phase() is called). */
-    master->allow_scan = 0;
+    ec_master_fetch_set_flags(&master->scan_flags, EC_SCAN_FLAG_DISALLOW);
 
     master->active = 0;
 
@@ -3265,7 +3258,7 @@ int ecrt_master(ec_master_t *master, ec_master_info_t *master_info)
 
     master_info->slave_count = master->slave_count;
     master_info->link_up = master->devices[EC_DEVICE_MAIN].link_state;
-    master_info->scan_busy = master->scan_busy;
+    master_info->scan_busy = ec_master_scan_busy(master);
     master_info->app_time = master->app_time;
     return 0;
 }
@@ -3365,7 +3358,7 @@ void ecrt_master_state(const ec_master_t *master, ec_master_state_t *state)
     state->slaves_responding = 0U;
     state->al_states = 0;
     state->link_up = 0U;
-    state->scan_busy = master->scan_busy ? 1U : 0U;
+    state->scan_busy = ec_master_scan_busy(master);
 
     for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
             dev_idx++) {
