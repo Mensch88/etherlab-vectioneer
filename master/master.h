@@ -252,6 +252,9 @@ struct ec_master {
 
     /* Configuration applied during bus scanning. */
     struct list_head sii_images; /**< List of slave SII images. */
+#ifdef EC_SII_OVERRIDE
+    unsigned int sii_override;
+#endif
 
     u64 app_time; /**< Time of the last ecrt_master_sync() call. */
     u64 dc_ref_time; /**< Common reference timestamp for DC start times. */
@@ -453,6 +456,9 @@ extern const unsigned int rate_intervals[EC_RATE_COUNT]; // see master.c
 extern char *eoe_interfaces[MAX_EOE]; // see module.c
 extern unsigned int eoe_count; // see module.c
 extern bool eoe_autocreate; // see module.c
+#endif
+#ifdef EC_SII_OVERRIDE
+extern bool sii_override; // see module.c
 #endif
 extern unsigned long pcap_size;  // see module.c
 

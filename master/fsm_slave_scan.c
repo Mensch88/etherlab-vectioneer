@@ -622,24 +622,27 @@ void ec_fsm_slave_scan_enter_sii_size(
     ec_slave_t *slave = fsm->slave;
 
 #ifdef EC_SII_OVERRIDE
-    if (!slave->vendor_words) {
-        if (!(slave->vendor_words =
-              (uint16_t *) kmalloc(32, GFP_KERNEL))) {
-            EC_SLAVE_ERR(slave, "Failed to allocate 16 words of SII data.\n");
-            slave->error_flag = 1;
-            fsm->state = ec_fsm_slave_scan_state_error;
-            return;
+    if (slave->master->sii_override) {
+        if (!slave->vendor_words) {
+            if (!(slave->vendor_words =
+                          (uint16_t *) kmalloc(32, GFP_KERNEL))) {
+                EC_SLAVE_ERR(slave, "Failed to allocate 16 words of SII data.\n");
+                slave->error_flag = 1;
+                fsm->state = ec_fsm_slave_scan_state_error;
+                return;
+            }
         }
-    }
 
-    // Start fetching device identity
-    fsm->sii_offset = 0;
-    fsm->state = ec_fsm_slave_scan_state_sii_device;
-#else
-    // Start fetching SII size
-    fsm->sii_offset = EC_FIRST_SII_CATEGORY_OFFSET; // first category header
-    fsm->state = ec_fsm_slave_scan_state_sii_size;
+        // Start fetching device identity
+        fsm->sii_offset = 0;
+        fsm->state = ec_fsm_slave_scan_state_sii_device;
+    } else
 #endif
+    {
+        // Start fetching SII size
+        fsm->sii_offset = EC_FIRST_SII_CATEGORY_OFFSET; // first category header
+        fsm->state = ec_fsm_slave_scan_state_sii_size;
+    }
 
     ec_fsm_sii_read(&fsm->fsm_sii, slave, fsm->sii_offset,
             EC_FSM_SII_USE_CONFIGURED_ADDRESS);
@@ -1112,17 +1115,20 @@ alloc_sii:
     }
 
 #ifdef EC_SII_OVERRIDE
-    // Copy vendor data to sii words
-    memcpy(slave->sii_image->words, slave->vendor_words, 32);
-    kfree(slave->vendor_words);
-    slave->vendor_words = NULL;
-    
-    // Start fetching rest of SII contents
-    fsm->sii_offset = 0x0010;
-#else
-    // Start fetching SII contents
-    fsm->sii_offset = 0x0000;
+    if (slave->master->sii_override) {
+        // Copy vendor data to sii words
+        memcpy(slave->sii_image->words, slave->vendor_words, 32);
+        kfree(slave->vendor_words);
+        slave->vendor_words = NULL;
+
+        // Start fetching rest of SII contents
+        fsm->sii_offset = 0x0010;
+    } else
 #endif
+    {
+        // Start fetching SII contents
+        fsm->sii_offset = 0x0000;
+    }
     fsm->state = ec_fsm_slave_scan_state_sii_data;
     ec_fsm_sii_read(&fsm->fsm_sii, slave, fsm->sii_offset,
             EC_FSM_SII_USE_CONFIGURED_ADDRESS);
@@ -1201,19 +1207,22 @@ void ec_fsm_slave_scan_state_sii_parse(
 
     ec_slave_clear_sync_managers(slave);
 
-#ifndef EC_SII_OVERRIDE
-    slave->sii_image->sii.alias =
-        EC_READ_U16(slave->sii_image->words + 0x0004);
-    slave->effective_alias = slave->sii_image->sii.alias;
-    slave->sii_image->sii.vendor_id =
-        EC_READ_U32(slave->sii_image->words + 0x0008);
-    slave->sii_image->sii.product_code =
-        EC_READ_U32(slave->sii_image->words + 0x000A);
-    slave->sii_image->sii.revision_number =
-        EC_READ_U32(slave->sii_image->words + 0x000C);
-    slave->sii_image->sii.serial_number =
-        EC_READ_U32(slave->sii_image->words + 0x000E);
+#ifdef EC_SII_OVERRIDE
+    if (!slave->master->sii_override)
 #endif
+    {
+        slave->sii_image->sii.alias =
+            EC_READ_U16(slave->sii_image->words + 0x0004);
+        slave->effective_alias = slave->sii_image->sii.alias;
+        slave->sii_image->sii.vendor_id =
+            EC_READ_U32(slave->sii_image->words + 0x0008);
+        slave->sii_image->sii.product_code =
+            EC_READ_U32(slave->sii_image->words + 0x000A);
+        slave->sii_image->sii.revision_number =
+            EC_READ_U32(slave->sii_image->words + 0x000C);
+        slave->sii_image->sii.serial_number =
+            EC_READ_U32(slave->sii_image->words + 0x000E);
+    }
     slave->sii_image->sii.boot_rx_mailbox_offset =
         EC_READ_U16(slave->sii_image->words + 0x0014);
     slave->sii_image->sii.boot_rx_mailbox_size =
@@ -1233,11 +1242,16 @@ void ec_fsm_slave_scan_state_sii_parse(
     slave->sii_image->sii.mailbox_protocols =
         EC_READ_U16(slave->sii_image->words + 0x001C);
 
-#if !defined(EC_SII_OVERRIDE) && defined(EC_SII_CACHE)
-    slave->effective_vendor_id = slave->sii_image->sii.vendor_id;
-    slave->effective_product_code = slave->sii_image->sii.product_code;
-    slave->effective_revision_number = slave->sii_image->sii.revision_number;
-    slave->effective_serial_number = slave->sii_image->sii.serial_number;
+#ifdef EC_SII_CACHE
+#ifdef EC_SII_OVERRIDE
+    if (!slave->master->sii_override)
+#endif
+    {
+        slave->effective_vendor_id = slave->sii_image->sii.vendor_id;
+        slave->effective_product_code = slave->sii_image->sii.product_code;
+        slave->effective_revision_number = slave->sii_image->sii.revision_number;
+        slave->effective_serial_number = slave->sii_image->sii.serial_number;
+    }
 #endif
 
     // clear mailbox settings if invalid values due to invalid sii file

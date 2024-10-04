@@ -63,6 +63,9 @@ char *eoe_interfaces[MAX_EOE]; /**< EOE interfaces parameter. */
 unsigned int eoe_count; /**< Number of EOE interfaces. */
 bool eoe_autocreate = 0;  /**< Auto-create EOE interfaces. */
 #endif
+#ifdef EC_SII_OVERRIDE
+bool sii_override = 1;  /**< SII override parameter. */
+#endif
 static unsigned int debug_level;  /**< Debug level parameter. */
 unsigned long pcap_size;  /**< Pcap buffer size in bytes. */
 
@@ -99,6 +102,10 @@ module_param_named(debug_level, debug_level, uint, S_IRUGO);
 MODULE_PARM_DESC(debug_level, "Debug level");
 module_param_named(pcap_size, pcap_size, ulong, S_IRUGO);
 MODULE_PARM_DESC(pcap_size, "Pcap buffer size");
+#ifdef EC_SII_OVERRIDE
+module_param_named(sii_override, sii_override, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(sii_override, "SII override mode");
+#endif
 
 /** \endcond */
 

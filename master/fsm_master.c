@@ -278,16 +278,24 @@ void ec_fsm_master_state_broadcast(
                 ec_device_names[fsm->dev_idx != 0]);
     }
 
-#ifdef EC_EOE
     if (!fsm->rescan_required) {
+#ifdef EC_EOE
         if (master->eoe_autocreate != eoe_autocreate) {
             // Don't change master->eoe_autocreate yet, do it in rescan_required
             EC_MASTER_INFO(master, "EoE autocreate changed to %s, triggering rescan.\n",
                     eoe_autocreate ? "ENABLED" : "DISABLED");
             fsm->rescan_required = 1;
         }
-    }
 #endif
+#ifdef EC_SII_OVERRIDE
+        if (master->sii_override != sii_override) {
+            // Don't change master->sii_override yet, do it in rescan_required
+            EC_MASTER_INFO(master, "SII override changed to %s, triggering rescan.\n",
+                    sii_override ? "ENABLED" : "DISABLED");
+            fsm->rescan_required = 1;
+        }
+#endif
+    }
 
     if (fsm->link_state[fsm->dev_idx] &&
             !master->devices[fsm->dev_idx].link_state) {
@@ -360,6 +368,11 @@ void ec_fsm_master_state_broadcast(
 #endif
             ec_master_clear_slaves(master);
             ec_master_clear_sii_images(master);
+#ifdef EC_SII_OVERRIDE
+            master->sii_override = sii_override;
+            EC_MASTER_DBG(master, 1, "Rescanning with SII override %s.\n",
+                    master->sii_override ? "ENABLED" : "DISABLED");
+#endif
 
             if (atomic_xchg(&master->config_busy, 0)) {
                 wake_up_interruptible(&master->config_queue);

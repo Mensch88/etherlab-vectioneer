@@ -186,6 +186,9 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     INIT_LIST_HEAD(&master->configs);
     INIT_LIST_HEAD(&master->domains);
     INIT_LIST_HEAD(&master->sii_images);
+#ifdef EC_SII_OVERRIDE
+    master->sii_override = sii_override;
+#endif
 
     master->app_time = 0ULL;
     master->dc_ref_time = 0ULL;
