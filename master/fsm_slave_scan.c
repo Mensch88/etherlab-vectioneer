@@ -579,7 +579,7 @@ void ec_fsm_slave_scan_enter_attach_sii(
 #ifdef EC_REGALIAS
         ec_fsm_slave_scan_enter_regalias(fsm, datagram);
 #else
-        if (slave->sii_image->sii.mailbox_protocols & EC_MBOX_COE) {
+        if (slave->sii_image->sii.mailbox_protocols) {
             ec_fsm_slave_scan_enter_preop(fsm, datagram);
         } else {
             fsm->state = ec_fsm_slave_scan_state_end;
@@ -1348,7 +1348,7 @@ void ec_fsm_slave_scan_state_sii_parse(
 #ifdef EC_REGALIAS
     ec_fsm_slave_scan_enter_regalias(fsm, datagram);
 #else
-    if (slave->sii_image->sii.mailbox_protocols & EC_MBOX_COE) {
+    if (slave->sii_image->sii.mailbox_protocols) {
         ec_fsm_slave_scan_enter_preop(fsm, datagram);
     } else {
         fsm->state = ec_fsm_slave_scan_state_end;
@@ -1421,7 +1421,7 @@ void ec_fsm_slave_scan_state_regalias(
         return;
     }
 
-    if (slave->sii_image->sii.mailbox_protocols & EC_MBOX_COE) {
+    if (slave->sii_image->sii.mailbox_protocols) {
         ec_fsm_slave_scan_enter_preop(fsm, datagram);
     } else {
         fsm->state = ec_fsm_slave_scan_state_end;
@@ -1620,7 +1620,11 @@ void ec_fsm_slave_scan_state_mailbox_cleared(
     else
 #endif
     {
-        ec_fsm_slave_scan_enter_pdos(fsm, datagram);
+        if (slave->sii_image->sii.mailbox_protocols & EC_MBOX_COE) {
+            ec_fsm_slave_scan_enter_pdos(fsm, datagram);
+        } else {
+            fsm->state = ec_fsm_slave_scan_state_end;
+        }
     }
 }
 
