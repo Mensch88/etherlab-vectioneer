@@ -61,7 +61,7 @@ static unsigned int backup_count; /**< Number of backup devices. */
 #ifdef EC_EOE
 char *eoe_interfaces[MAX_EOE]; /**< EOE interfaces parameter. */
 unsigned int eoe_count; /**< Number of EOE interfaces. */
-bool eoe_autocreate = 1;  /**< Auto-create EOE interfaces. */
+bool eoe_autocreate = 0;  /**< Auto-create EOE interfaces. */
 #endif
 static unsigned int debug_level;  /**< Debug level parameter. */
 unsigned long pcap_size;  /**< Pcap buffer size in bytes. */
