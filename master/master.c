@@ -239,6 +239,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     master->thread = NULL;
 
 #ifdef EC_EOE
+    master->eoe_autocreate = eoe_autocreate;
     master->eoe_thread = NULL;
     INIT_LIST_HEAD(&master->eoe_handlers);
 #endif
@@ -466,26 +467,34 @@ void ec_master_clear(
 /*****************************************************************************/
 
 #ifdef EC_EOE
-/** Clear and free auto created EoE handlers.
- * Clear the slave reference from manually created EoE handlers.
+/** Clear and free 'unused auto-created'/all EoE handlers.
  */
 void ec_master_clear_eoe_handlers(
         ec_master_t *master, /**< EtherCAT master */
-        unsigned int free_all /**< free auto and manual EoE handlers */
+        unsigned int free_all /**< free all EoE handlers */
         )
 {
     ec_eoe_t *eoe, *next;
 
     list_for_each_entry_safe(eoe, next, &master->eoe_handlers, list) {
-        if (free_all || eoe->auto_created) {
-            // free_all or auto created eoe: clear and free
+        if (free_all || (eoe->auto_created && !eoe->slave)) {
             list_del(&eoe->list);
             ec_eoe_clear(eoe);
             kfree(eoe);
-        } else {
-            // manaully created eoe: clear slave ref
-            ec_eoe_clear_slave(eoe);
         }
+    }
+}
+
+/** Clear the slave reference from all EoE handlers.
+ */
+void ec_master_clear_slave_eoe_handlers(
+        ec_master_t *master /**< EtherCAT master */
+)
+{
+    ec_eoe_t *eoe;
+
+    list_for_each_entry(eoe, &master->eoe_handlers, list) {
+        ec_eoe_clear_slave(eoe);
     }
 }
 #endif

@@ -91,9 +91,9 @@ module_param_array(backup_devices, charp, &backup_count, S_IRUGO);
 MODULE_PARM_DESC(backup_devices, "MAC addresses of backup devices");
 #ifdef EC_EOE
 module_param_array(eoe_interfaces, charp, &eoe_count, S_IRUGO);
-MODULE_PARM_DESC(eoe_interfaces, "EOE interfaces");
-module_param_named(eoe_autocreate, eoe_autocreate, bool, S_IRUGO);
-MODULE_PARM_DESC(eoe_autocreate, "EOE atuo create mode");
+MODULE_PARM_DESC(eoe_interfaces, "EoE interfaces");
+module_param_named(eoe_autocreate, eoe_autocreate, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(eoe_autocreate, "EoE auto create mode");
 #endif
 module_param_named(debug_level, debug_level, uint, S_IRUGO);
 MODULE_PARM_DESC(debug_level, "Debug level");

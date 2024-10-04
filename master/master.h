@@ -318,6 +318,7 @@ struct ec_master {
     struct task_struct *thread; /**< Master thread. */
 
 #ifdef EC_EOE
+    unsigned int eoe_autocreate;
     struct task_struct *eoe_thread; /**< EoE thread. */
     struct list_head eoe_handlers; /**< Ethernet over EtherCAT handlers. */
 #endif
@@ -389,6 +390,7 @@ const ec_slave_t *ec_master_find_slave_const(const ec_master_t *, uint16_t,
 void ec_master_output_stats(ec_master_t *);
 #ifdef EC_EOE
 void ec_master_clear_eoe_handlers(ec_master_t *, unsigned int);
+void ec_master_clear_slave_eoe_handlers(ec_master_t *);
 #endif
 void ec_master_slaves_not_available(ec_master_t *);
 void ec_master_slaves_available(ec_master_t *);

@@ -1158,6 +1158,66 @@ void ec_eoe_state_tx_sent(ec_eoe_t *eoe /**< EoE handler */)
     }
 }
 
+/*****************************************************************************/
+
+/** try to reconnect to an existing EoE handler.
+ */
+static inline int ec_eoe_reconnect_slave_to_handler(
+        ec_slave_t *slave /**< EtherCAT slave */
+)
+{
+    ec_master_t *master = slave->master;
+    ec_eoe_t *eoe;
+    char name[EC_DATAGRAM_NAME_SIZE];
+
+    if (slave->effective_alias) {
+        snprintf(name, EC_DATAGRAM_NAME_SIZE,
+                 "eoe%ua%u", master->index, slave->effective_alias);
+    } else {
+        snprintf(name, EC_DATAGRAM_NAME_SIZE,
+                 "eoe%us%u", master->index, slave->ring_position);
+    }
+
+    list_for_each_entry(eoe, &master->eoe_handlers, list) {
+        if ((eoe->slave == NULL) &&
+            (master->eoe_autocreate || !eoe->auto_created) &&
+            (strncmp(name, ec_eoe_name(eoe), EC_DATAGRAM_NAME_SIZE) == 0)) {
+            ec_eoe_link_slave(eoe, slave);
+            return 0;
+        }
+    }
+
+    // none found
+    return -1;
+}
+
+/** reconnect/create an EoE handler if slave supports EoE.
+ */
+void ec_eoe_create_handler(
+        ec_slave_t * slave
+)
+{
+    if (slave->sii_image && (slave->sii_image->sii.mailbox_protocols & EC_MBOX_EOE)) {
+        // try to connect to existing eoe handler,
+        // otherwise try to create a new one (if master not active)
+        if (ec_eoe_reconnect_slave_to_handler(slave) == 0) {
+            // reconnected
+        } else if (slave->master->eoe_autocreate) {
+            // auto create EoE handler for this slave
+            ec_eoe_t *eoe;
+
+            if (!(eoe = kmalloc(sizeof(ec_eoe_t), GFP_KERNEL))) {
+                EC_SLAVE_ERR(slave, "Failed to allocate EoE handler memory!\n");
+            } else if (ec_eoe_auto_init(eoe, slave)) {
+                EC_SLAVE_ERR(slave, "Failed to init EoE handler!\n");
+                kfree(eoe);
+            } else {
+                list_add_tail(&eoe->list, &slave->master->eoe_handlers);
+            }
+        }
+    }
+}
+
 /******************************************************************************
  *  NET_DEVICE functions
  *****************************************************************************/

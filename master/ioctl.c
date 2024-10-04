@@ -1150,6 +1150,9 @@ static ATTRIBUTES int ec_ioctl_slave_sii_write(
     unsigned int byte_size;
     uint16_t *words;
     ec_sii_write_request_t request;
+#ifdef EC_EOE
+    ec_eoe_t *eoe;
+#endif
 
     if (copy_from_user(&data, (void __user *) arg, sizeof(data))) {
         return -EFAULT;
@@ -1186,6 +1189,15 @@ static ATTRIBUTES int ec_ioctl_slave_sii_write(
         return -EINVAL;
     }
 
+#ifdef EC_EOE
+    list_for_each_entry(eoe, &master->eoe_handlers, list) {
+        if (eoe->slave == slave) {
+            ec_eoe_clear_slave(eoe);
+            break;
+        }
+    }
+#endif
+
     // init SII write request
     INIT_LIST_HEAD(&request.list);
     request.slave = slave;
@@ -1219,7 +1231,16 @@ static ATTRIBUTES int ec_ioctl_slave_sii_write(
 
     kfree(words);
 
-    return request.state == EC_INT_REQUEST_SUCCESS ? 0 : -EIO;
+    if (request.state == EC_INT_REQUEST_SUCCESS) {
+#ifdef EC_EOE
+        ec_lock_down(&master->master_sem);
+        ec_eoe_create_handler(slave);
+        ec_master_clear_eoe_handlers(master, 0);
+        ec_lock_up(&master->master_sem);
+#endif
+        return 0;
+    }
+    return -EIO;
 }
 
 /*****************************************************************************/

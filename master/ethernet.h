@@ -123,6 +123,7 @@ int ec_eoe_is_open(const ec_eoe_t *);
 int ec_eoe_is_idle(const ec_eoe_t *);
 char *ec_eoe_name(const ec_eoe_t *);
 unsigned int ec_eoe_tx_queued_frames(const ec_eoe_t *);
+void ec_eoe_create_handler(ec_slave_t *);
 
 /*****************************************************************************/
 

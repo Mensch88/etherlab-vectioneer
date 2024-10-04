@@ -278,6 +278,17 @@ void ec_fsm_master_state_broadcast(
                 ec_device_names[fsm->dev_idx != 0]);
     }
 
+#ifdef EC_EOE
+    if (!fsm->rescan_required) {
+        if (master->eoe_autocreate != eoe_autocreate) {
+            // Don't change master->eoe_autocreate yet, do it in rescan_required
+            EC_MASTER_INFO(master, "EoE autocreate changed to %s, triggering rescan.\n",
+                    eoe_autocreate ? "ENABLED" : "DISABLED");
+            fsm->rescan_required = 1;
+        }
+    }
+#endif
+
     if (fsm->link_state[fsm->dev_idx] &&
             !master->devices[fsm->dev_idx].link_state) {
         ec_device_index_t dev_idx;
@@ -288,7 +299,7 @@ void ec_fsm_master_state_broadcast(
 
         ec_master_slaves_not_available(master);
 #ifdef EC_EOE
-        ec_master_clear_eoe_handlers(master, 0);
+        ec_master_clear_slave_eoe_handlers(master);
 #endif
         ec_master_clear_slaves(master);
         ec_master_clear_sii_images(master);
@@ -342,7 +353,10 @@ void ec_fsm_master_state_broadcast(
 
             ec_master_slaves_not_available(master);
 #ifdef EC_EOE
-            ec_master_clear_eoe_handlers(master, 0);
+            ec_master_clear_slave_eoe_handlers(master);
+            master->eoe_autocreate = eoe_autocreate;
+            EC_MASTER_DBG(master, 1, "Rescanning with EoE autocreate %s.\n",
+                    master->eoe_autocreate ? "ENABLED" : "DISABLED");
 #endif
             ec_master_clear_slaves(master);
             ec_master_clear_sii_images(master);
@@ -1070,6 +1084,7 @@ void ec_fsm_master_state_scan_slave(
     ec_master_calc_dc(master);
 
 #ifdef EC_EOE
+    ec_master_clear_eoe_handlers(master, 0);
     if (!master->eoe_thread) {
         ec_master_eoe_start(master);
     }
