@@ -72,9 +72,11 @@ void ec_fsm_master_state_dc_reset_filter(ec_fsm_master_t *);
 void ec_fsm_master_state_write_sii(ec_fsm_master_t *);
 void ec_fsm_master_state_reboot_slave(ec_fsm_master_t *);
 
+void ec_fsm_master_enter_read_al_status(ec_fsm_master_t *);
 void ec_fsm_master_enter_dc_read_old_times(ec_fsm_master_t *);
 void ec_fsm_master_enter_clear_addresses(ec_fsm_master_t *);
 void ec_fsm_master_enter_write_system_times(ec_fsm_master_t *);
+void ec_fsm_master_enter_scan_slave(ec_fsm_master_t *);
 
 /*****************************************************************************/
 
@@ -447,12 +449,7 @@ void ec_fsm_master_state_broadcast(
         } else {
             // fetch state from first slave
             fsm->slave = master->slaves;
-            ec_datagram_fprd(fsm->datagram, fsm->slave->station_address,
-                    0x0130, 2);
-            ec_datagram_zero(datagram);
-            fsm->datagram->device_index = fsm->slave->device_index;
-            fsm->retries = EC_FSM_RETRIES;
-            fsm->state = ec_fsm_master_state_read_al_status;
+            ec_fsm_master_enter_read_al_status(fsm);
         }
     } else {
         ec_fsm_master_restart(fsm);
@@ -530,12 +527,7 @@ void ec_fsm_master_action_next_slave_state(
     if (fsm->slave < master->slaves + master->slave_count) {
         // fetch state from next slave
         fsm->idle = 1;
-        ec_datagram_fprd(fsm->datagram,
-                fsm->slave->station_address, 0x0130, 2);
-        ec_datagram_zero(fsm->datagram);
-        fsm->datagram->device_index = fsm->slave->device_index;
-        fsm->retries = EC_FSM_RETRIES;
-        fsm->state = ec_fsm_master_state_read_al_status;
+        ec_fsm_master_enter_read_al_status(fsm);
         return;
     }
 
@@ -726,6 +718,20 @@ void ec_fsm_master_action_configure(
 }
 
 /*****************************************************************************/
+
+/** Start fetch AL state of a slave (fsm->slave).
+ */
+void ec_fsm_master_enter_read_al_status(
+        ec_fsm_master_t *fsm /**< Master state machine. */
+)
+{
+    ec_datagram_fprd(fsm->datagram, fsm->slave->station_address,
+                     0x0130, 2);
+    ec_datagram_zero(fsm->datagram);
+    fsm->datagram->device_index = fsm->slave->device_index;
+    fsm->retries = EC_FSM_RETRIES;
+    fsm->state = ec_fsm_master_state_read_al_status;
+}
 
 /** Master state: READ AL STATUS.
  *
@@ -1055,12 +1061,22 @@ void ec_fsm_master_state_dc_measure_delays(
         ec_fsm_slave_set_ready(&slave->fsm);
     }
 
-    fsm->state = ec_fsm_master_state_scan_slave;
-    fsm->datagram->state = EC_DATAGRAM_INVALID; // nothing to send
-    fsm->state(fsm);    // execute immediately
+    fsm->datagram->device_index = EC_DEVICE_MAIN;
+    ec_fsm_master_enter_scan_slave(fsm);
 }
 
 /*****************************************************************************/
+
+/** Start wait until slave scanning complete.
+ */
+void ec_fsm_master_enter_scan_slave(
+        ec_fsm_master_t *fsm /**< Master state machine. */
+)
+{
+    ec_datagram_brd(fsm->datagram, 0x0130, 2);
+    ec_datagram_zero(fsm->datagram);
+    fsm->state = ec_fsm_master_state_scan_slave;
+}
 
 /** Master state: SCAN SLAVE.
  *
@@ -1078,9 +1094,19 @@ void ec_fsm_master_state_scan_slave(
             slave++) {
         if (slave->scan_required && !slave->error_flag) {
             // still in progress
+            if (fsm->datagram->state == EC_DATAGRAM_RECEIVED &&
+                fsm->datagram->working_counter != fsm->slaves_responding[fsm->datagram->device_index]) {
+                ec_master_fetch_clear_flags(&master->scan_flags, EC_SCAN_FLAG_BUSY);
+                wake_up_interruptible(&master->scan_queue);
+                ec_fsm_master_restart(fsm);
+            } else {
+                fsm->datagram->device_index = (fsm->datagram->device_index + 1) % ec_master_num_devices(master);
+                ec_fsm_master_enter_scan_slave(fsm);
+            }
             return;
         }
     }
+    fsm->datagram->state = EC_DATAGRAM_INVALID; // nothing to send
 
     EC_MASTER_INFO(master, "Bus scanning completed in %lu ms.\n",
             (jiffies - fsm->scan_jiffies) * 1000 / HZ);
