@@ -60,6 +60,7 @@ static inline int ec_lock_down_interruptible(ec_lock_t *sem) { return rt_mutex_l
 #else
 static inline int ec_lock_down_interruptible(ec_lock_t *sem) { return rt_mutex_lock_interruptible(sem, 1); }
 #endif
+static inline int ec_lock_trylock(ec_lock_t *sem) { return rt_mutex_trylock(sem); }
 static inline void ec_lock_up(ec_lock_t *sem) { rt_mutex_unlock(sem); }
 
 #else
@@ -69,6 +70,7 @@ typedef struct semaphore ec_lock_t;
 static inline void ec_lock_init(ec_lock_t *sem) { sema_init(sem, 1); }
 static inline void ec_lock_down(ec_lock_t *sem) { down(sem); }
 static inline int ec_lock_down_interruptible(ec_lock_t *sem) { return down_interruptible(sem); }
+static inline int ec_lock_trylock(ec_lock_t *sem) { return !down_trylock(sem); /* inverse */ }
 static inline void ec_lock_up(ec_lock_t *sem) { up(sem); }
 
 #endif

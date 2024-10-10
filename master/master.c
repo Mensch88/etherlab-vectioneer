@@ -1183,7 +1183,7 @@ void ec_master_queue_datagram_ext(
         )
 {
     ec_lock_down(&master->ext_queue_sem);
-    list_add_tail(&datagram->queue, &master->ext_datagram_queue);
+    list_add_tail(&datagram->ext_queue, &master->ext_datagram_queue);
     ec_lock_up(&master->ext_queue_sem);
 }
 
@@ -1386,13 +1386,16 @@ static inline size_t ec_master_send(ec_master_t *master, int flags)
     }
 
     if (flags & EC_SEND_EXT_QUEUE_DATAGRAMS) {
-        ec_lock_down(&master->ext_queue_sem);
-        list_for_each_entry_safe(datagram, n, &master->ext_datagram_queue,
-                                 queue) {
-            list_del(&datagram->queue);
-            ec_master_queue_datagram(master, datagram);
+        if (ec_lock_trylock(&master->ext_queue_sem)) {
+            list_for_each_entry_safe(datagram, n, &master->ext_datagram_queue,
+                                     ext_queue) {
+                list_del_init(&datagram->ext_queue);
+                ec_master_queue_datagram(master, datagram);
+            }
+            ec_lock_up(&master->ext_queue_sem);
         }
-        ec_lock_up(&master->ext_queue_sem);
+        // TODO: Notify "failure" with -EAGAIN? Requires change of return type size_t to int
+        //       https://gitlab.com/etherlab.org/ethercat/-/commit/495dbc1aa
     }
 
     for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
