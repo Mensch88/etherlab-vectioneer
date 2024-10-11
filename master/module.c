@@ -67,7 +67,7 @@ bool eoe_autocreate = 0;  /**< Auto-create EOE interfaces. */
 bool sii_override = 1;  /**< SII override parameter. */
 #endif
 #ifdef EC_SII_CACHE
-bool sii_cache = 1;  /**< SII cache parameter. */
+bool sii_cache = 0;  /**< SII cache parameter. */
 #endif
 static unsigned int debug_level;  /**< Debug level parameter. */
 unsigned long pcap_size;  /**< Pcap buffer size in bytes. */
