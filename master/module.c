@@ -66,6 +66,9 @@ bool eoe_autocreate = 0;  /**< Auto-create EOE interfaces. */
 #ifdef EC_SII_OVERRIDE
 bool sii_override = 1;  /**< SII override parameter. */
 #endif
+#ifdef EC_SII_CACHE
+bool sii_cache = 1;  /**< SII cache parameter. */
+#endif
 static unsigned int debug_level;  /**< Debug level parameter. */
 unsigned long pcap_size;  /**< Pcap buffer size in bytes. */
 
@@ -105,6 +108,10 @@ MODULE_PARM_DESC(pcap_size, "Pcap buffer size");
 #ifdef EC_SII_OVERRIDE
 module_param_named(sii_override, sii_override, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(sii_override, "SII override mode");
+#endif
+#ifdef EC_SII_CACHE
+module_param_named(sii_cache, sii_cache, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(sii_cache, "SII cache mode");
 #endif
 
 /** \endcond */

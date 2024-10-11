@@ -252,6 +252,9 @@ struct ec_master {
 
     /* Configuration applied during bus scanning. */
     struct list_head sii_images; /**< List of slave SII images. */
+#ifdef EC_SII_CACHE
+    unsigned int sii_cache;
+#endif
 #ifdef EC_SII_OVERRIDE
     unsigned int sii_override;
 #endif
@@ -459,6 +462,9 @@ extern bool eoe_autocreate; // see module.c
 #endif
 #ifdef EC_SII_OVERRIDE
 extern bool sii_override; // see module.c
+#endif
+#ifdef EC_SII_CACHE
+extern bool sii_cache; // see module.c
 #endif
 extern unsigned long pcap_size;  // see module.c
 

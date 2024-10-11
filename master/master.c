@@ -189,6 +189,9 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
 #ifdef EC_SII_OVERRIDE
     master->sii_override = sii_override;
 #endif
+#ifdef EC_SII_CACHE
+    master->sii_cache = sii_cache;
+#endif
 
     master->app_time = 0ULL;
     master->dc_ref_time = 0ULL;
@@ -568,7 +571,7 @@ void ec_master_clear_sii_images(
 
     list_for_each_entry_safe(sii_image, next, &master->sii_images, list) {
 #ifdef EC_SII_CACHE
-        if ((master->phase != EC_OPERATION) ||
+        if (!master->sii_cache || (master->phase != EC_OPERATION) ||
            ((sii_image->sii.serial_number == 0) && (sii_image->sii.alias == 0)))
 #endif
         {

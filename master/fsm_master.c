@@ -297,6 +297,14 @@ void ec_fsm_master_state_broadcast(
             fsm->rescan_required = 1;
         }
 #endif
+#ifdef EC_SII_CACHE
+        if (master->sii_cache != sii_cache) {
+            // Don't change master->sii_cache yet, do it in rescan_required
+            EC_MASTER_INFO(master, "SII cache changed to %s, triggering rescan.\n",
+                    sii_cache ? "ENABLED" : "DISABLED");
+            fsm->rescan_required = 1;
+        }
+#endif
     }
 
     if (fsm->link_state[fsm->dev_idx] &&
@@ -374,6 +382,11 @@ void ec_fsm_master_state_broadcast(
             master->sii_override = sii_override;
             EC_MASTER_DBG(master, 1, "Rescanning with SII override %s.\n",
                     master->sii_override ? "ENABLED" : "DISABLED");
+#endif
+#ifdef EC_SII_CACHE
+            master->sii_cache = sii_cache;
+            EC_MASTER_DBG(master, 1, "Rescanning with SII cache %s.\n",
+                    master->sii_cache ? "ENABLED" : "DISABLED");
 #endif
 
             if (atomic_xchg(&master->config_busy, 0)) {

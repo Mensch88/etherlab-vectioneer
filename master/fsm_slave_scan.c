@@ -532,37 +532,39 @@ void ec_fsm_slave_scan_enter_attach_sii(
     unsigned int i = 0;
     unsigned int found = 0;
 
-    if ((slave->effective_alias != 0) || (slave->effective_serial_number != 0)) {
-        list_for_each_entry(sii_image, &slave->master->sii_images, list) {
-            // Check if slave match a stored SII image with alias, serial number,
-            // vendor id and product code.
-            if ((slave->effective_alias != 0) &&
-                    (slave->effective_alias == sii_image->sii.alias) &&
-                    (slave->effective_revision_number == sii_image->sii.revision_number)) {
-                EC_SLAVE_DBG(slave, 1, "Slave can re-use SII image data stored."
-                        " Identified by alias %u.\n", (uint32_t)slave->effective_alias);
-                found = 1;
-                break;
-            }
-            else if ((slave->effective_vendor_id == sii_image->sii.vendor_id) &&
-                     (slave->effective_product_code == sii_image->sii.product_code) &&
-                     (slave->effective_revision_number == sii_image->sii.revision_number) &&
-                     (slave->effective_serial_number == sii_image->sii.serial_number)) {
-                EC_SLAVE_DBG(slave, 1, "Slave can re-use SII image data stored."
-                        " Identified by vendor id 0x%08x,"
-                        " product code 0x%08x, revision 0x%08x and serial 0x%08x.\n",
-                        slave->effective_vendor_id,
-                        slave->effective_product_code,
-                        slave->effective_revision_number,
-                        slave->effective_serial_number);
-                found = 1;
-                break;
+    if (slave->master->sii_cache) {
+        if ((slave->effective_alias != 0) || (slave->effective_serial_number != 0)) {
+            list_for_each_entry(sii_image, &slave->master->sii_images, list) {
+                // Check if slave match a stored SII image with alias, serial number,
+                // vendor id and product code.
+                if ((slave->effective_alias != 0) &&
+                        (slave->effective_alias == sii_image->sii.alias) &&
+                        (slave->effective_revision_number == sii_image->sii.revision_number)) {
+                    EC_SLAVE_DBG(slave, 1, "Slave can re-use SII image data stored."
+                            " Identified by alias %u.\n", (uint32_t)slave->effective_alias);
+                    found = 1;
+                    break;
+                }
+                else if ((slave->effective_vendor_id == sii_image->sii.vendor_id) &&
+                         (slave->effective_product_code == sii_image->sii.product_code) &&
+                         (slave->effective_revision_number == sii_image->sii.revision_number) &&
+                         (slave->effective_serial_number == sii_image->sii.serial_number)) {
+                    EC_SLAVE_DBG(slave, 1, "Slave can re-use SII image data stored."
+                            " Identified by vendor id 0x%08x,"
+                            " product code 0x%08x, revision 0x%08x and serial 0x%08x.\n",
+                            slave->effective_vendor_id,
+                            slave->effective_product_code,
+                            slave->effective_revision_number,
+                            slave->effective_serial_number);
+                    found = 1;
+                    break;
+                }
             }
         }
-    }
-    else {
-        EC_SLAVE_DBG(slave, 1, "Slave cannot be uniquely identified."
-                " SII image data cannot be re-used!\n");
+        else {
+            EC_SLAVE_DBG(slave, 1, "Slave cannot be uniquely identified."
+                    " SII image data cannot be re-used!\n");
+        }
     }
 
     if (found) {
@@ -711,11 +713,14 @@ void ec_fsm_slave_scan_state_datalink(
 
 #ifdef EC_SII_ASSIGN
     ec_fsm_slave_scan_enter_assign_sii(fsm, datagram);
+    return;
 #elif defined(EC_SII_CACHE)
-    ec_fsm_slave_scan_enter_sii_identity(fsm, datagram);
-#else
-    ec_fsm_slave_scan_enter_attach_sii(fsm, datagram);
+    if (slave->master->sii_cache) {
+        ec_fsm_slave_scan_enter_sii_identity(fsm, datagram);
+        return;
+    }
 #endif
+    ec_fsm_slave_scan_enter_attach_sii(fsm, datagram);
 }
 
 /*****************************************************************************/
@@ -753,10 +758,12 @@ void ec_fsm_slave_scan_state_assign_sii(
 
 continue_with_sii_size:
 #ifdef EC_SII_CACHE
-    ec_fsm_slave_scan_enter_sii_identity(fsm, datagram);
-#else
-    ec_fsm_slave_scan_enter_attach_sii(fsm, datagram);
+    if (slave->master->sii_cache) {
+        ec_fsm_slave_scan_enter_sii_identity(fsm, datagram);
+        return;
+    }
 #endif
+    ec_fsm_slave_scan_enter_attach_sii(fsm, datagram);
 }
 
 #endif
@@ -907,10 +914,12 @@ void ec_fsm_slave_scan_state_sii_device(
 
     slave->effective_alias                = slave->sii_image->sii.alias;
 #ifdef EC_SII_CACHE
-    slave->effective_vendor_id            = slave->sii_image->sii.vendor_id;
-    slave->effective_product_code         = slave->sii_image->sii.product_code;
-    slave->effective_revision_number      = slave->sii_image->sii.revision_number;
-    slave->effective_serial_number        = slave->sii_image->sii.serial_number;
+    if (slave->master->sii_cache) {
+        slave->effective_vendor_id            = slave->sii_image->sii.vendor_id;
+        slave->effective_product_code         = slave->sii_image->sii.product_code;
+        slave->effective_revision_number      = slave->sii_image->sii.revision_number;
+        slave->effective_serial_number        = slave->sii_image->sii.serial_number;
+    }
 #endif
 
     ec_fsm_slave_scan_enter_sii_request(fsm, datagram);
@@ -1243,14 +1252,16 @@ void ec_fsm_slave_scan_state_sii_parse(
         EC_READ_U16(slave->sii_image->words + 0x001C);
 
 #ifdef EC_SII_CACHE
+    if (slave->master->sii_cache) {
 #ifdef EC_SII_OVERRIDE
-    if (!slave->master->sii_override)
+        if (!slave->master->sii_override)
 #endif
-    {
-        slave->effective_vendor_id = slave->sii_image->sii.vendor_id;
-        slave->effective_product_code = slave->sii_image->sii.product_code;
-        slave->effective_revision_number = slave->sii_image->sii.revision_number;
-        slave->effective_serial_number = slave->sii_image->sii.serial_number;
+        {
+            slave->effective_vendor_id = slave->sii_image->sii.vendor_id;
+            slave->effective_product_code = slave->sii_image->sii.product_code;
+            slave->effective_revision_number = slave->sii_image->sii.revision_number;
+            slave->effective_serial_number = slave->sii_image->sii.serial_number;
+        }
     }
 #endif
 
@@ -1605,12 +1616,14 @@ void ec_fsm_slave_scan_state_mailbox_cleared(
     }
 
 #ifdef EC_SII_CACHE
-    if ((slave->effective_alias != 0) || (slave->effective_serial_number != 0)) {
-        // SII data has been stored
-        for (i = 0; i < slave->sii_image->sii.sync_count; i++) {
-            if (!list_empty(&slave->sii_image->sii.syncs[i].pdos.list)) {
-                fetch_pdos = 0; // PDOs already fetched
-                break;
+    if (slave->master->sii_cache) {
+        if ((slave->effective_alias != 0) || (slave->effective_serial_number != 0)) {
+            // SII data has been stored
+            for (i = 0; i < slave->sii_image->sii.sync_count; i++) {
+                if (!list_empty(&slave->sii_image->sii.syncs[i].pdos.list)) {
+                    fetch_pdos = 0; // PDOs already fetched
+                    break;
+                }
             }
         }
     }
