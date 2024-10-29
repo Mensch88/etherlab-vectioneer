@@ -150,6 +150,7 @@ int ec_fsm_sii_exec(ec_fsm_sii_t *fsm, /**< finite state machine */
         return 0;
     if (fsm->datagram &&
             (fsm->datagram->state == EC_DATAGRAM_INIT ||
+             fsm->datagram->state == EC_DATAGRAM_DEFERRED ||
              fsm->datagram->state == EC_DATAGRAM_QUEUED ||
              fsm->datagram->state == EC_DATAGRAM_SENT)) {
         // datagram not received yet

@@ -103,6 +103,20 @@ const unsigned int rate_intervals[] = {
 
 /*****************************************************************************/
 
+typedef enum {
+    EC_SEND_QUEUED_DATAGRAMS = (1 << 0),
+    EC_SEND_MASTER_FSM_DATAGRAM = (1 << 1),
+    EC_SEND_SLAVE_FSM_DATAGRAMS = (1 << 2),
+    EC_SEND_EXT_QUEUE_DATAGRAMS = (1 << 3),
+
+    EC_SEND_ALL_DATAGRAMS = EC_SEND_QUEUED_DATAGRAMS |
+                            EC_SEND_MASTER_FSM_DATAGRAM |
+                            EC_SEND_SLAVE_FSM_DATAGRAMS |
+                            EC_SEND_EXT_QUEUE_DATAGRAMS
+} ec_master_send_flags_t;
+
+/*****************************************************************************/
+
 void ec_master_clear_slave_configs(ec_master_t *);
 void ec_master_clear_domains(ec_master_t *);
 static int ec_master_idle_thread(void *);
@@ -113,6 +127,9 @@ static int ec_master_eoe_thread(void *);
 void ec_master_find_dc_ref_clock(ec_master_t *);
 void ec_master_clear_device_stats(ec_master_t *);
 void ec_master_update_device_stats(ec_master_t *);
+
+static inline size_t ecrt_master_send_ext_internal(ec_master_t *);
+static inline void ecrt_master_receive_internal(ec_master_t *);
 
 /*****************************************************************************/
 
@@ -707,7 +724,7 @@ void ec_master_internal_send_cb(
 {
     ec_master_t *master = (ec_master_t *) cb_data;
     ec_lock_down(&master->io_sem);
-    ecrt_master_send_ext(master);
+    ecrt_master_send_ext_internal(master);
     ec_lock_up(&master->io_sem);
 }
 
@@ -721,7 +738,7 @@ void ec_master_internal_receive_cb(
 {
     ec_master_t *master = (ec_master_t *) cb_data;
     ec_lock_down(&master->io_sem);
-    ecrt_master_receive(master);
+    ecrt_master_receive_internal(master);
     ec_lock_up(&master->io_sem);
 }
 
@@ -1332,6 +1349,173 @@ break_send:
 
 /*****************************************************************************/
 
+static inline size_t ec_master_send(ec_master_t *master, int flags)
+{
+    ec_datagram_t *datagram, *n;
+    ec_device_index_t dev_idx;
+    size_t sent_bytes;
+    unsigned int defer_queued;
+
+    if (!(flags & EC_SEND_ALL_DATAGRAMS)) {
+        return 0;
+    }
+
+    sent_bytes = 0;
+    defer_queued = !(flags & EC_SEND_QUEUED_DATAGRAMS);
+
+    if (defer_queued) {
+        // defer what has already been queued not to be sent now
+        list_for_each_entry(datagram, &master->datagram_queue, queue)
+        {
+            if (datagram->state == EC_DATAGRAM_QUEUED) {
+                datagram->state = EC_DATAGRAM_DEFERRED;
+            }
+        }
+    }
+
+    if (flags & EC_SEND_MASTER_FSM_DATAGRAM) {
+        if (master->injection_seq_rt != master->injection_seq_fsm) {
+            // inject datagram produced by master FSM
+            ec_master_queue_datagram(master, &master->fsm_datagram);
+            master->injection_seq_rt = master->injection_seq_fsm;
+        }
+    }
+
+    if (flags & EC_SEND_SLAVE_FSM_DATAGRAMS) {
+        ec_master_inject_external_datagrams(master);
+    }
+
+    if (flags & EC_SEND_EXT_QUEUE_DATAGRAMS) {
+        ec_lock_down(&master->ext_queue_sem);
+        list_for_each_entry_safe(datagram, n, &master->ext_datagram_queue,
+                                 queue) {
+            list_del(&datagram->queue);
+            ec_master_queue_datagram(master, datagram);
+        }
+        ec_lock_up(&master->ext_queue_sem);
+    }
+
+    for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
+         dev_idx++) {
+        if (unlikely(!master->devices[dev_idx].link_state)) {
+            // link is down, no datagram can be sent
+            list_for_each_entry_safe(datagram, n,
+                                     &master->datagram_queue, queue) {
+                if (datagram->device_index == dev_idx) {
+                    datagram->state = EC_DATAGRAM_ERROR;
+                    list_del_init(&datagram->queue);
+                }
+            }
+
+            if (!master->devices[dev_idx].dev) {
+                continue;
+            }
+
+            // query link state
+            ec_device_poll(&master->devices[dev_idx]);
+
+            // clear frame statistics
+            ec_device_clear_stats(&master->devices[dev_idx]);
+            continue;
+        }
+
+        // send frames
+        sent_bytes = max(sent_bytes,
+                         ec_master_send_datagrams(master, dev_idx));
+    }
+
+    if (defer_queued) {
+        list_for_each_entry(datagram, &master->datagram_queue, queue)
+        {
+            if (datagram->state == EC_DATAGRAM_DEFERRED) {
+                datagram->state = EC_DATAGRAM_QUEUED;
+            }
+        }
+    }
+
+    return sent_bytes;
+}
+
+/*****************************************************************************/
+
+static inline void ec_master_receive(ec_master_t *master)
+{
+    unsigned int dev_idx;
+    ec_datagram_t *datagram, *next;
+
+    // receive datagrams
+    for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
+         dev_idx++) {
+        ec_device_poll(&master->devices[dev_idx]);
+    }
+    ec_master_update_device_stats(master);
+
+    // dequeue all datagrams that timed out
+    list_for_each_entry_safe(datagram, next, &master->datagram_queue, queue) {
+        if (datagram->state != EC_DATAGRAM_SENT) continue;
+
+#ifdef EC_HAVE_CYCLES
+        if (master->devices[EC_DEVICE_MAIN].cycles_poll -
+                datagram->cycles_sent > timeout_cycles) {
+#else
+        if (master->devices[EC_DEVICE_MAIN].jiffies_poll -
+            datagram->jiffies_sent > timeout_jiffies) {
+#endif
+            list_del_init(&datagram->queue);
+            datagram->state = EC_DATAGRAM_TIMED_OUT;
+            master->stats.timeouts++;
+
+#ifdef EC_RT_SYSLOG
+            ec_master_output_stats(master);
+
+            if (unlikely(master->debug_level > 0)) {
+                unsigned int time_us;
+#ifdef EC_HAVE_CYCLES
+                time_us = (unsigned int)
+                    (master->devices[EC_DEVICE_MAIN].cycles_poll -
+                        datagram->cycles_sent) * 1000 / cpu_khz;
+#else
+                time_us = (unsigned int)
+                        ((master->devices[EC_DEVICE_MAIN].jiffies_poll -
+                          datagram->jiffies_sent) * 1000000 / HZ);
+#endif
+                EC_MASTER_DBG(master, 0, "TIMED OUT datagram %p,"
+                                         " index %02X waited %u us.\n",
+                              datagram, datagram->index, time_us);
+            }
+#endif /* RT_SYSLOG */
+        }
+    }
+}
+
+/*****************************************************************************/
+
+static inline void ecrt_master_receive_internal(ec_master_t *master) {
+    ec_master_receive(master);
+}
+
+static inline size_t ecrt_master_send_internal(ec_master_t *master) {
+    size_t sent_bytes;
+    sent_bytes = ec_master_send(master, EC_SEND_QUEUED_DATAGRAMS |
+                                        EC_SEND_MASTER_FSM_DATAGRAM);
+    // queued datagrams now sent, nothing to defer:
+    sent_bytes += ec_master_send(master, EC_SEND_QUEUED_DATAGRAMS |
+                                         EC_SEND_SLAVE_FSM_DATAGRAMS);
+    return sent_bytes;
+}
+
+static inline size_t ecrt_master_send_ext_internal(ec_master_t *master) {
+    size_t sent_bytes;
+    sent_bytes = ecrt_master_send_internal(master);
+    // queued datagrams already sent, nothing to defer:
+    sent_bytes += ec_master_send(master, EC_SEND_QUEUED_DATAGRAMS |
+                                         EC_SEND_EXT_QUEUE_DATAGRAMS);
+    return sent_bytes;
+}
+
+/*****************************************************************************/
+
+
 /** Processes a received frame.
  *
  * This function is called by the network driver for every received frame.
@@ -1861,6 +2045,7 @@ void ec_master_exec_slave_fsms(
         }
 
         if (fsm->datagram->state == EC_DATAGRAM_INIT ||
+                fsm->datagram->state == EC_DATAGRAM_DEFERRED ||
                 fsm->datagram->state == EC_DATAGRAM_QUEUED ||
                 fsm->datagram->state == EC_DATAGRAM_SENT) {
             // previous datagram was not sent or received yet.
@@ -3075,121 +3260,22 @@ void ecrt_master_deactivate(ec_master_t *master)
 
 /*****************************************************************************/
 
-size_t ecrt_master_send(ec_master_t *master)
-{
-    ec_datagram_t *datagram, *n;
-    ec_device_index_t dev_idx;
-    size_t sent_bytes = 0;
-
-
-    if (master->injection_seq_rt != master->injection_seq_fsm) {
-        // inject datagram produced by master FSM
-        ec_master_queue_datagram(master, &master->fsm_datagram);
-        master->injection_seq_rt = master->injection_seq_fsm;
-    }
-
-    ec_master_inject_external_datagrams(master);
-
-    for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
-            dev_idx++) {
-        if (unlikely(!master->devices[dev_idx].link_state)) {
-            // link is down, no datagram can be sent
-            list_for_each_entry_safe(datagram, n,
-                    &master->datagram_queue, queue) {
-                if (datagram->device_index == dev_idx) {
-                    datagram->state = EC_DATAGRAM_ERROR;
-                    list_del_init(&datagram->queue);
-                }
-            }
-
-            if (!master->devices[dev_idx].dev) {
-                continue;
-            }
-
-            // query link state
-            ec_device_poll(&master->devices[dev_idx]);
-
-            // clear frame statistics
-            ec_device_clear_stats(&master->devices[dev_idx]);
-            continue;
-        }
-
-        // send frames
-        sent_bytes = max(sent_bytes,
-            ec_master_send_datagrams(master, dev_idx));
-    }
-
-    return sent_bytes;
-}
-
-/*****************************************************************************/
-
 void ecrt_master_receive(ec_master_t *master)
 {
-    unsigned int dev_idx;
-    ec_datagram_t *datagram, *next;
+    ecrt_master_receive_internal(master);
+}
+/*****************************************************************************/
 
-    // receive datagrams
-    for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
-            dev_idx++) {
-        ec_device_poll(&master->devices[dev_idx]);
-    }
-    ec_master_update_device_stats(master);
-
-    // dequeue all datagrams that timed out
-    list_for_each_entry_safe(datagram, next, &master->datagram_queue, queue) {
-        if (datagram->state != EC_DATAGRAM_SENT) continue;
-
-#ifdef EC_HAVE_CYCLES
-        if (master->devices[EC_DEVICE_MAIN].cycles_poll -
-                datagram->cycles_sent > timeout_cycles) {
-#else
-        if (master->devices[EC_DEVICE_MAIN].jiffies_poll -
-                datagram->jiffies_sent > timeout_jiffies) {
-#endif
-            list_del_init(&datagram->queue);
-            datagram->state = EC_DATAGRAM_TIMED_OUT;
-            master->stats.timeouts++;
-
-#ifdef EC_RT_SYSLOG
-            ec_master_output_stats(master);
-
-            if (unlikely(master->debug_level > 0)) {
-                unsigned int time_us;
-#ifdef EC_HAVE_CYCLES
-                time_us = (unsigned int)
-                    (master->devices[EC_DEVICE_MAIN].cycles_poll -
-                        datagram->cycles_sent) * 1000 / cpu_khz;
-#else
-                time_us = (unsigned int)
-                    ((master->devices[EC_DEVICE_MAIN].jiffies_poll -
-                            datagram->jiffies_sent) * 1000000 / HZ);
-#endif
-                EC_MASTER_DBG(master, 0, "TIMED OUT datagram %p,"
-                        " index %02X waited %u us.\n",
-                        datagram, datagram->index, time_us);
-            }
-#endif /* RT_SYSLOG */
-        }
-    }
+size_t ecrt_master_send(ec_master_t *master)
+{
+    return ecrt_master_send_internal(master);
 }
 
 /*****************************************************************************/
 
 size_t ecrt_master_send_ext(ec_master_t *master)
 {
-    ec_datagram_t *datagram, *next;
-
-    ec_lock_down(&master->ext_queue_sem);
-
-    list_for_each_entry_safe(datagram, next, &master->ext_datagram_queue,
-            queue) {
-        list_del(&datagram->queue);
-        ec_master_queue_datagram(master, datagram);
-    }
-    ec_lock_up(&master->ext_queue_sem);
-
-    return ecrt_master_send(master);
+    return ecrt_master_send_ext_internal(master);
 }
 
 /*****************************************************************************/

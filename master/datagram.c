@@ -593,6 +593,9 @@ void ec_datagram_print_state(
         case EC_DATAGRAM_INIT:
             printk(KERN_CONT "initialized");
             break;
+        case EC_DATAGRAM_DEFERRED:
+            printk(KERN_CONT "deferred");
+            break;
         case EC_DATAGRAM_QUEUED:
             printk(KERN_CONT "queued");
             break;

@@ -149,6 +149,7 @@ int ec_fsm_master_exec(
         )
 {
     if (fsm->datagram->state == EC_DATAGRAM_SENT
+        || fsm->datagram->state == EC_DATAGRAM_DEFERRED
         || fsm->datagram->state == EC_DATAGRAM_QUEUED) {
         // datagram was not sent or received yet.
         return 0;
