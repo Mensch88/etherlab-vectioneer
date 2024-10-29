@@ -71,6 +71,8 @@
  */
 #define FORCE_OUTPUT_CORRUPTED 0
 
+#define IDLE_THREAD_SEND_INTERVAL 1000000 / HZ
+
 #ifdef EC_HAVE_CYCLES
 
 /** Frame timeout in cycles.
@@ -222,7 +224,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     }
 
     // send interval in IDLE phase
-    ec_master_set_send_interval(master, 1000000 / HZ);
+    ec_master_set_send_interval(master, IDLE_THREAD_SEND_INTERVAL);
 
     master->fsm_slave = NULL;
     INIT_LIST_HEAD(&master->fsm_exec_list);
@@ -827,6 +829,9 @@ int ec_master_enter_idle_phase(
         }
     }
 #endif
+
+    // send interval in IDLE phase
+    ec_master_set_send_interval(master, IDLE_THREAD_SEND_INTERVAL);
 
 #ifdef EC_EOE
     ec_master_eoe_start(master, 0);
@@ -1940,9 +1945,6 @@ static int ec_master_idle_thread(void *priv_data)
     int fsm_exec;
     size_t sent_bytes;
 
-    // send interval in IDLE phase
-    ec_master_set_send_interval(master, 1000000 / HZ);
-
     EC_MASTER_DBG(master, 1, "Idle thread running with send interval = %u us,"
             " max data size=%zu\n", master->send_interval,
             master->max_queue_size);
@@ -1989,8 +1991,7 @@ static int ec_master_idle_thread(void *priv_data)
 #endif
         } else {
 #ifdef EC_USE_HRTIMER
-            ec_master_nanosleep(
-                    sent_bytes * EC_BYTE_TRANSMISSION_TIME_NS * 6 / 5);
+            ec_master_nanosleep(max(EC_THREAD_MIN_SLEEP_TIME_NS, sent_bytes * EC_BYTE_CONS_TX_TIME_NS));
 #else
             schedule();
 #endif
@@ -3059,6 +3060,9 @@ void ecrt_master_deactivate(ec_master_t *master)
     ec_master_fetch_set_flags(&master->scan_flags, EC_SCAN_FLAG_DISALLOW);
 
     master->active = 0;
+
+    // send interval in IDLE phase
+    ec_master_set_send_interval(master, IDLE_THREAD_SEND_INTERVAL);
 
 #ifdef EC_EOE
     ec_master_eoe_start(master, 0);

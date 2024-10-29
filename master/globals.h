@@ -54,6 +54,15 @@
  * t_ns = 1 / (100 MBit/s / 8 bit/byte) = 80 ns/byte
  */
 #define EC_BYTE_TRANSMISSION_TIME_NS 80
+#define EC_BYTE_CONS_TX_TIME_NS 96  // * 6 / 5
+
+/** Minimum sleep time between iterations of OP/EoE threads.
+ * - smallest ethernet frame = 64 bytes
+ * - preamble + SFD + IFG = 20 bytes
+ * t_ns = (64 + 20) * EC_BYTE_CONS_TX_TIME_NS = 8064 ns
+ * -> roundup to 10000 (10 microseconds)
+ */
+#define EC_THREAD_MIN_SLEEP_TIME_NS 10000
 
 /** Number of state machine retries on datagram timeout. */
 #define EC_FSM_RETRIES 3
