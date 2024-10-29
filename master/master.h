@@ -376,7 +376,7 @@ void ec_master_leave_operation_phase(ec_master_t *);
 
 #ifdef EC_EOE
 // EoE
-void ec_master_eoe_start(ec_master_t *);
+void ec_master_eoe_start(ec_master_t *, unsigned int);
 void ec_master_eoe_stop(ec_master_t *);
 #endif
 

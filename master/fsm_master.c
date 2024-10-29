@@ -1138,7 +1138,9 @@ void ec_fsm_master_state_scan_slave(
 #ifdef EC_EOE
     ec_master_clear_eoe_handlers(master, 0);
     if (!master->eoe_thread) {
-        ec_master_eoe_start(master);
+        ec_master_eoe_start(master, 1);
+    } else if (!list_empty(&master->eoe_handlers)) {
+        kthread_unpark(master->eoe_thread);
     }
 #endif
 
