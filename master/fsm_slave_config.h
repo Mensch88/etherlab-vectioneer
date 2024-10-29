@@ -76,6 +76,7 @@ struct ec_fsm_slave_config
     unsigned long last_diff_ms; /**< For sync reporting. */
     unsigned long jiffies_start; /**< For timeout calculations. */
     unsigned int take_time; /**< Store jiffies after datagram reception. */
+    unsigned int dc_sync_busy;
 };
 
 /*****************************************************************************/

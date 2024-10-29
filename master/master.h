@@ -346,6 +346,11 @@ struct ec_master {
 
     wait_queue_head_t request_queue; /**< Wait queue for external requests
                                        from user space. */
+
+    atomic_t rps; /**< Application RPS state and counter */
+    wait_queue_head_t rps_send_queue; /**< Wait queue for synchronizing to application send */
+    wait_queue_head_t rps_recv_queue; /**< Wait queue for synchronizing to application receive */
+    atomic_t dc_config_busy;
 };
 
 /*****************************************************************************/

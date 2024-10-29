@@ -295,6 +295,7 @@ struct ec_slave
     ec_mbox_data_t mbox_mbg_data; /**< Received mailbox data for MBox Gateway. */
 
     uint8_t valid_mbox_data; /**< Received mailbox data is valid. */
+    atomic_t config_busy;
 };
 
 /*****************************************************************************/
@@ -336,6 +337,10 @@ void ec_slave_attach_pdo_names(ec_slave_t *);
 void ec_slave_calc_upstream_port(ec_slave_t *);
 void ec_slave_calc_port_delays(ec_slave_t *);
 void ec_slave_calc_transmission_delays_rec(ec_slave_t *, uint32_t *);
+
+static inline int ec_slave_config_busy(ec_slave_t *slave) {
+    return atomic_read_acquire(&slave->config_busy);
+}
 
 void ec_read_mbox_lock_clear(ec_slave_t *);
 int ec_read_mbox_locked(ec_slave_t *);

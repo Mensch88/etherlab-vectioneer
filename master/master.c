@@ -103,6 +103,75 @@ const unsigned int rate_intervals[] = {
 
 /*****************************************************************************/
 
+/**
+ * @enum ec_rps_state_t
+ * @brief Enumerates possible states of an operation in the EtherCAT app synchronization process.
+ *
+ * This enum represents the state transitions within an EtherCAT application's receive-process-send
+ * (RPS) cycle. The following abbreviations are used to denote the main functions and states:
+ *
+ * Function Abbreviations:
+ * - **EMR**: `ecrt_master_receive` — Function for receiving data from the EtherCAT master.
+ * - **EMS**: `ecrt_master_send` — Function for sending data to the EtherCAT master.
+ *
+ * State Abbreviations:
+ * - **[I]**dle: Not in an application's receive-process-send (RPS) cycle.
+ * - **[R]**eceiving: Data is being retrieved from the master for the first time since ecrt_master_send.
+ * - **[P]**rocessing: Data received from the master is being processed.
+ *   - **Note**: If ecrt_master_receive is called while Processing, the state transitions to
+ *               Processing + Receiving.
+ * - **[PR] ([P]**rocessing + [R]eceiving):
+ *   Data is retrieved from the EtherCAT master for at least a second time before ecrt_master_send.
+ * - **[S]**ending: Data is being sent to the master.
+ *
+ * ### State Flow
+ *
+ * ```
+ *                                      ,--------------------------- < --------------------------.
+ *                                     v                                                         ^
+ * App start ... (EMS[s]) ... 1st EMR ... EMS ... EMR ... (EMR[s]) ... EMS ... (EMS[s]) ... EMR ...
+ * [----- I -----]      [- I -]             [- I -]                      [- I -]      [- I -]
+ *                            [- R -]             [R]                                       [R]
+ *                                  [- P -]         [- P -]      [- P -]                      [- P -]
+ *                                                        [- PR -]
+ *               [-- S -]                 [S]                          [S]     [-- S -]
+ * ```
+ *
+ * The state flow indicates the expected order of operations. Each state progresses based on the
+ * main functions and transitions through idle, receiving, processing (+ receiving), and sending.
+ */
+typedef enum {
+    // flags
+    EC_RPS_FLAG_R = (1 << 0),      // high during EC_RPS_STATE_RECV
+    EC_RPS_FLAG_S = (1 << 1),      // high during EC_RPS_STATE_SEND
+    EC_RPS_FLAG_P_PR_S = (1 << 2), // high during EC_RPS_STATE_PROC(_RECV) and EC_RPS_STATE_SEND
+
+    // states
+    EC_RPS_STATE_IDLE = 0,
+    EC_RPS_STATE_RECV = EC_RPS_FLAG_R,
+    EC_RPS_STATE_PROC = EC_RPS_FLAG_P_PR_S,
+    EC_RPS_STATE_PROC_RECV = EC_RPS_FLAG_R | EC_RPS_FLAG_P_PR_S,
+    EC_RPS_STATE_SEND = EC_RPS_FLAG_S | EC_RPS_FLAG_P_PR_S,
+} ec_rps_state_t;
+
+#define EC_MASK_RPS_STATE (EC_RPS_FLAG_R | EC_RPS_FLAG_S | EC_RPS_FLAG_P_PR_S)
+#define EC_MASK_RPS_COUNT ~(EC_RPS_FLAG_R | EC_RPS_FLAG_S)
+#define RPS atomic_read_acquire(&master->rps)
+#define RPS_COUNT(rps) ((rps) & EC_MASK_RPS_COUNT)
+#define __RPS_STATE_EQ_1(rps_state, state1) ((rps_state) == (state1))
+#define __RPS_STATE_EQ_2(rps_state, state1, state2) ((rps_state) == (state1) || (rps_state) == (state2))
+#define __RPS_STATE_EQ(_1, _2, NAME, ...) NAME
+#define RPS_STATE_EQ(rps, ...) __RPS_STATE_EQ(__VA_ARGS__, __RPS_STATE_EQ_2, __RPS_STATE_EQ_1)((rps) & EC_MASK_RPS_STATE, __VA_ARGS__)
+// RPS_CONDITION:
+// Counter has changed and the P_PR_S flag is as expected,
+// or the counter has changed by more than 1.
+#define RPS_CONDITION(rps, cnt, p_pr_s) \
+    (RPS_COUNT((rps) = RPS) != (cnt) && \
+    ((!!((rps) & EC_RPS_FLAG_P_PR_S) == (p_pr_s)) || \
+     RPS_COUNT(rps) != ((cnt) + EC_RPS_FLAG_P_PR_S)))
+
+/*****************************************************************************/
+
 typedef enum {
     EC_SEND_QUEUED_DATAGRAMS = (1 << 0),
     EC_SEND_MASTER_FSM_DATAGRAM = (1 << 1),
@@ -130,6 +199,8 @@ void ec_master_update_device_stats(ec_master_t *);
 
 static inline size_t ecrt_master_send_ext_internal(ec_master_t *);
 static inline void ecrt_master_receive_internal(ec_master_t *);
+static inline int ecrt_master_rps_update_pre_send(ec_master_t *);
+static inline void ecrt_master_rps_update_post_send(ec_master_t *, int);
 
 /*****************************************************************************/
 
@@ -281,6 +352,11 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     INIT_LIST_HEAD(&master->emerg_reg_requests);
 
     init_waitqueue_head(&master->request_queue);
+
+    atomic_set_release(&master->rps, EC_RPS_STATE_IDLE);
+    init_waitqueue_head(&master->rps_recv_queue);
+    init_waitqueue_head(&master->rps_send_queue);
+    atomic_set_release(&master->dc_config_busy, 0);
 
     // init devices
     for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
@@ -626,8 +702,15 @@ void ec_master_slaves_available(ec_master_t *master)
 }
 
 /*****************************************************************************/
+
 static inline unsigned int ec_master_config_busy(ec_master_t *master) {
     return atomic_read_acquire(&master->config_busy) ? 1U : 0U;
+}
+
+/*****************************************************************************/
+
+static inline unsigned int ec_master_dc_config_busy(ec_master_t *master) {
+    return atomic_read_acquire(&master->dc_config_busy) ? 1U : 0U;
 }
 
 /*****************************************************************************/
@@ -846,6 +929,9 @@ int ec_master_enter_idle_phase(
         }
     }
 #endif
+
+    atomic_set_release(&master->rps, EC_RPS_STATE_IDLE);
+    atomic_set_release(&master->dc_config_busy, 0);
 
     // send interval in IDLE phase
     ec_master_set_send_interval(master, IDLE_THREAD_SEND_INTERVAL);
@@ -1983,40 +2069,6 @@ void ec_master_nanosleep(const unsigned long nsecs)
     } while (t.task && !signal_pending(current));
 }
 
-/*****************************************************************************/
-
-/** Sleep timer.
- */
-static ktime_t ec_master_nanosleep_timer(struct hrtimer_sleeper *t, ktime_t ideal_time, const unsigned long nsecs)
-{
-    t->task = current;
-    ideal_time = ktime_add_ns(ideal_time, nsecs);
-    hrtimer_set_expires(&t->timer, ideal_time);
-
-    do {
-        set_current_state(TASK_INTERRUPTIBLE);
-        hrtimer_start_expires(&t->timer, HRTIMER_MODE_ABS);
-
-        if (likely(t->task))
-            schedule();
-
-        hrtimer_cancel(&t->timer);
-    } while (t->task && !signal_pending(current));
-    __set_current_state(TASK_RUNNING);
-
-    return ideal_time;
-}
-
-/*****************************************************************************/
-
-/** Create time with usec precision.
- */
-static inline ktime_t us_to_ktime(u64 us)
-{
-	static const ktime_t ktime_zero = 0;
-	return ktime_add_us(ktime_zero, us);
-}
-
 #endif // EC_USE_HRTIMER
 
 /*****************************************************************************/
@@ -2175,7 +2227,7 @@ static int ec_master_idle_thread(void *priv_data)
         if (fsm_exec) {
             ec_master_queue_datagram(master, &master->fsm_datagram);
         }
-        sent_bytes = ecrt_master_send(master);
+        sent_bytes = ecrt_master_send_ext(master);
         ec_lock_up(&master->io_sem);
 
         if (ec_fsm_master_idle(&master->fsm)) {
@@ -2206,74 +2258,153 @@ static int ec_master_idle_thread(void *priv_data)
 static int ec_master_operation_thread(void *priv_data)
 {
     ec_master_t *master = (ec_master_t *) priv_data;
-#ifdef EC_USE_HRTIMER
-    struct hrtimer_sleeper t;
-    ktime_t ideal_time;
-    s64 start_time;
-#endif
+    int rps_r, rps_s, rps_count, rps_startup_done, send_flags;
+    long wait_completed;
+    unsigned long wait_timeout_jiffies;
+    size_t sent_bytes;
 
     EC_MASTER_DBG(master, 1, "Operation thread running"
             " with fsm interval = %u us, max data size=%zu\n",
             master->send_interval, master->max_queue_size);
 
-#ifdef EC_USE_HRTIMER
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
-    hrtimer_init_sleeper(&t, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
-#else
-    hrtimer_init_sleeper(&t, CLOCK_MONOTONIC, HRTIMER_MODE_ABS, current);
-#endif
-    // wait till the next millisecond, before entering operation loop
-    ideal_time = t.timer.base->get_time();
-    start_time = ktime_to_us(ideal_time);
-    ideal_time = us_to_ktime(start_time + 1);
-    ec_master_nanosleep_timer(&t, ideal_time, 0);
-#endif
+    rps_startup_done = 0;
+    wait_timeout_jiffies = usecs_to_jiffies(2 * master->send_interval);
 
 #ifdef EC_EOE
     if (master->eoe_thread)
         wake_up_process(master->eoe_thread);
 #endif
 
+    rps_r = RPS;
+    rps_s = rps_r;
     while (!kthread_should_stop()) {
+        wait_completed = 0;
+
+        // only call receive within thread when appropriate
+        if (!ec_master_dc_config_busy(master) && !ec_fsm_master_idle(&master->fsm) &&
+            RPS_STATE_EQ(RPS, EC_RPS_STATE_IDLE)) {
+            if (master->receive_cb == ec_master_internal_receive_cb) {
+                ec_lock_down(&master->io_sem);
+                if (RPS_STATE_EQ(RPS, EC_RPS_STATE_IDLE)) { // re-check after locking
+                    ec_master_receive(master); // don't update master->rps
+                    rps_r = RPS;
+                    wait_completed = rps_startup_done;
+                }
+                ec_lock_up(&master->io_sem);
+            } else {
+                // FIXME: Probably distorts RPS sync; likely calls ecrt_master_receive() and updates master->rps
+                master->receive_cb(master->cb_data);
+                rps_r = RPS;
+                wait_completed = rps_startup_done;
+            }
+        }
+
+        // wait for the next receive since last iteration to be completed
+        if (!wait_completed) {
+            rps_count = RPS_COUNT(rps_r);
+rps_startup:
+            wait_completed = wait_event_killable_timeout(master->rps_recv_queue,
+                                                         RPS_CONDITION(rps_r, rps_count, 1),
+                                                         wait_timeout_jiffies);
+            if (kthread_should_stop())
+                break;
+            if (wait_completed <= 0) {
+                if (wait_completed == 0) {
+                    if (!rps_startup_done)
+                        goto rps_startup;
+                    EC_MASTER_DBG(master, 1, "Operation thread: waiting for application"
+                                             " receive timed out.\n");
+                } else {
+                    EC_MASTER_INFO(master, "Operation thread: waiting for application"
+                                           " receive interrupted by signal.\n");
+                    break;
+                }
+            }
+            rps_startup_done = 1;
+        }
+
         ec_datagram_output_stats(&master->fsm_datagram);
 
+        // output statistics
+        ec_master_output_stats(master);
+
+        // execute master & slave state machines
+        if (ec_lock_down_interruptible(&master->master_sem)) {
+            break;
+        }
+
+        send_flags = 0;
+        sent_bytes = 0;
         if (master->injection_seq_rt == master->injection_seq_fsm) {
-            // output statistics
-            ec_master_output_stats(master);
-
-            // execute master & slave state machines
-            if (ec_lock_down_interruptible(&master->master_sem)) {
-                break;
-            }
-
             if (ec_fsm_master_exec(&master->fsm)) {
-                // Inject datagrams (let the RT thread queue them, see
-                // ecrt_master_send())
+                // Inject datagrams (let the RT thread queue them, see ec_master_send())
                 master->injection_seq_fsm++;
+                if (master->fsm_datagram.state != EC_DATAGRAM_INVALID) {
+                    // will be queued: see ec_master_queue_datagram()
+                    rps_s = RPS;
+                    send_flags |= EC_SEND_MASTER_FSM_DATAGRAM;
+                }
+            }
+        }
+
+        // if rt_slave_requests is true and the slaves are available
+        // this will be handled by the app explicitly calling
+        // ecrt_master_exec_slave_request()
+        if (!master->rt_slave_requests || !master->rt_slaves_available) {
+            ec_master_exec_slave_fsms(master);
+            if (master->ext_ring_idx_rt != master->ext_ring_idx_fsm) {
+                // something to inject: see ec_master_inject_external_datagrams()
+                rps_s = RPS;
+                send_flags |= EC_SEND_SLAVE_FSM_DATAGRAMS;
+            }
+        }
+        ec_lock_up(&master->master_sem);
+
+        if (send_flags) {
+            wait_completed = 0;
+
+            // only call send within thread when appropriate
+            if (!ec_master_dc_config_busy(master) && RPS_STATE_EQ(rps_s, EC_RPS_STATE_SEND, EC_RPS_STATE_IDLE) &&
+                RPS_STATE_EQ(RPS, EC_RPS_STATE_IDLE)) {
+                if (master->send_cb == ec_master_internal_send_cb) {
+                    ec_lock_down(&master->io_sem);
+                    if (RPS_STATE_EQ(RPS, EC_RPS_STATE_IDLE)) { // re-check after locking
+                        sent_bytes = ec_master_send(master, send_flags); // don't update master->rps
+                        wait_completed = 1;
+                    }
+                    ec_lock_up(&master->io_sem);
+                } else {
+                    // FIXME: Probably distorts RPS sync; likely calls ecrt_master_send_ext() and updates master->rps
+                    master->send_cb(master->cb_data);
+                    wait_completed = 1;
+                }
             }
 
-            // if rt_slave_requests is true and the slaves are available
-            // this will be handled by the app explicitly calling
-            // ecrt_master_exec_slave_request()
-            if (!master->rt_slave_requests || !master->rt_slaves_available) {
-                ec_master_exec_slave_fsms(master);
+            if (!wait_completed) {
+                // wait for the next send (since we last "observed" we need to send something)
+                rps_count = RPS_COUNT(rps_s);
+                wait_completed = wait_event_killable_timeout(master->rps_send_queue,
+                                                             RPS_CONDITION(rps_s, rps_count, 0),
+                                                             wait_timeout_jiffies);
+                if (kthread_should_stop())
+                    break;
+                if (wait_completed <= 0) {
+                    if (wait_completed == 0) {
+                        EC_MASTER_DBG(master, 1, "Operation thread: waiting for application"
+                                                 " send timed out.\n");
+                    } else {
+                        EC_MASTER_INFO(master, "Operation thread: waiting for application"
+                                               " send interrupted by signal.\n");
+                        break;
+                    }
+                }
             }
-
-            ec_lock_up(&master->master_sem);
         }
 
 #ifdef EC_USE_HRTIMER
-        // the op thread should not work faster than the sending RT thread
-        // ec_master_nanosleep(master->send_interval * 1000);
-        ideal_time = ec_master_nanosleep_timer(&t, ideal_time, master->send_interval * 1000);
+        ec_master_nanosleep(max(EC_THREAD_MIN_SLEEP_TIME_NS, sent_bytes * EC_BYTE_CONS_TX_TIME_NS));
 #else
-        if (ec_fsm_master_idle(&master->fsm)) {
-            set_current_state(TASK_INTERRUPTIBLE);
-            schedule_timeout(1);
-        }
-        else {
-            schedule();
-        }
+        schedule();
 #endif
     }
 
@@ -2416,23 +2547,87 @@ static int ec_master_eoe_thread(void *priv_data)
 {
     ec_master_t *master = (ec_master_t *) priv_data;
     ec_eoe_t *eoe;
-    unsigned int none_open, sth_to_send, all_idle;
+    int rps_r, rps_s, rps_count, rps_startup_done, send_flags;
+    long wait_completed;
+    unsigned long wait_timeout_jiffies;
+    size_t sent_bytes;
 
     EC_MASTER_INFO(master, "Started EoE thread.\n");
 
-    while (!kthread_should_stop()) {
-        none_open = 1;
-        all_idle = 1;
+    rps_startup_done = 0;
+    wait_timeout_jiffies = usecs_to_jiffies(2 * master->send_interval);
 
-        ec_lock_down(&master->master_sem);
-        list_for_each_entry(eoe, &master->eoe_handlers, list) {
-            if (ec_eoe_is_open(eoe)) {
-                none_open = 0;
-                break;
+    rps_r = RPS;
+    rps_s = rps_r;
+    while (!kthread_should_stop()) {
+        wait_completed = 0;
+
+        if (!master->active && !ec_master_dc_config_busy(master) &&
+            RPS_STATE_EQ(RPS, EC_RPS_STATE_IDLE)) {
+            if (master->receive_cb == ec_master_internal_receive_cb) {
+                ec_lock_down(&master->io_sem);
+                if (RPS_STATE_EQ(RPS, EC_RPS_STATE_IDLE)) { // re-check after locking
+                    ec_master_receive(master); // don't update master->rps
+                    rps_r = RPS;
+                    wait_completed = 1; // not rps_startup_done
+                }
+                ec_lock_up(&master->io_sem);
+            } else {
+                // FIXME: Probably distorts RPS sync; likely calls ecrt_master_receive() and updates master->rps
+                master->receive_cb(master->cb_data);
+                rps_r = RPS;
+                wait_completed = 1; // not rps_startup_done
             }
         }
+
+        // wait for the next receive since last iteration to be completed
+        if (!wait_completed) {
+            rps_count = RPS_COUNT(rps_r);
+rps_startup:
+            wait_completed = wait_event_killable_timeout(master->rps_recv_queue,
+                                                         RPS_CONDITION(rps_r, rps_count, 1),
+                                                         wait_timeout_jiffies);
+            if (kthread_should_stop())
+                break;
+            if (wait_completed <= 0) {
+                if (wait_completed == 0) {
+                    if (!rps_startup_done)
+                        goto rps_startup;
+                    EC_MASTER_DBG(master, 1, "EoE thread: waiting for application"
+                                             " receive timed out.\n");
+                } else {
+                    EC_MASTER_INFO(master, "EoE thread: waiting for application"
+                                           " receive interrupted by signal.\n");
+                    break;
+                }
+            }
+            rps_startup_done = 1;
+        }
+
+        if (ec_lock_down_interruptible(&master->master_sem)) {
+            break;
+        }
+
+        send_flags = 0;
+        sent_bytes = 0;
         if (list_empty(&master->eoe_handlers)) {
             kthread_park(current); // set the park bit
+        } else {
+            list_for_each_entry(eoe, &master->eoe_handlers, list) {
+                if (ec_eoe_is_open(eoe)) {
+                    if ( eoe->slave && !ec_slave_config_busy(eoe->slave) &&
+                         ( (eoe->slave->current_state == EC_SLAVE_STATE_PREOP) ||
+                           (eoe->slave->current_state == EC_SLAVE_STATE_SAFEOP) ||
+                           (eoe->slave->current_state == EC_SLAVE_STATE_OP) ) ) {
+                        ec_eoe_run(eoe);
+                        if (eoe->queue_datagram) {
+                            ec_eoe_queue(eoe);
+                            rps_s = RPS;
+                            send_flags = EC_SEND_EXT_QUEUE_DATAGRAMS;
+                        }
+                    }
+                }
+            }
         }
         ec_lock_up(&master->master_sem);
 
@@ -2442,48 +2637,56 @@ static int ec_master_eoe_thread(void *priv_data)
             if (kthread_should_stop())
                 break;
             EC_MASTER_INFO(master, "Resuming EoE thread.\n");
+            rps_r = RPS;
             continue;
         }
 
-        if (none_open) {
-            goto schedule;
-        }
+        if (send_flags) {
+            wait_completed = 0;
 
-        // receive datagrams
-        master->receive_cb(master->cb_data);
-
-        // actual EoE processing
-        ec_lock_down(&master->master_sem);
-        sth_to_send = 0;
-        list_for_each_entry(eoe, &master->eoe_handlers, list) {
-            if ( eoe->slave &&
-                 ( (eoe->slave->current_state == EC_SLAVE_STATE_PREOP) ||
-                   (eoe->slave->current_state == EC_SLAVE_STATE_SAFEOP) ||
-                   (eoe->slave->current_state == EC_SLAVE_STATE_OP) ) ) {
-                ec_eoe_run(eoe);
-                if (eoe->queue_datagram) {
-                    ec_eoe_queue(eoe);
-                    sth_to_send = 1;
+            // only call send within thread when appropriate
+            if (!ec_master_dc_config_busy(master) && RPS_STATE_EQ(rps_s, EC_RPS_STATE_SEND, EC_RPS_STATE_IDLE) &&
+                RPS_STATE_EQ(RPS, EC_RPS_STATE_IDLE)) {
+                if (master->send_cb == ec_master_internal_send_cb) {
+                    ec_lock_down(&master->io_sem);
+                    if (RPS_STATE_EQ(RPS, EC_RPS_STATE_IDLE)) { // re-check after locking
+                        sent_bytes = ec_master_send(master, send_flags); // don't update master->rps
+                        wait_completed = 1;
+                    }
+                    ec_lock_up(&master->io_sem);
+                } else {
+                    // FIXME: Probably distorts RPS sync; likely calls ecrt_master_send_ext() and updates master->rps
+                    master->send_cb(master->cb_data);
+                    wait_completed = 1;
                 }
-                if (!ec_eoe_is_idle(eoe)) {
-                    all_idle = 0;
+            }
+
+            if (!wait_completed) {
+                // wait for the next send (since we last "observed" we need to send something)
+                rps_count = RPS_COUNT(rps_s);
+                wait_completed = wait_event_killable_timeout(master->rps_send_queue,
+                                                             RPS_CONDITION(rps_s, rps_count, 0),
+                                                             wait_timeout_jiffies);
+                if (kthread_should_stop())
+                    break;
+                if (wait_completed <= 0) {
+                    if (wait_completed == 0) {
+                        EC_MASTER_DBG(master, 1, "EoE thread: waiting for application"
+                                                 " send timed out.\n");
+                    } else {
+                        EC_MASTER_INFO(master, "EoE thread: waiting for application"
+                                               " send interrupted by signal.\n");
+                        break;
+                    }
                 }
             }
         }
-        ec_lock_up(&master->master_sem);
 
-        if (sth_to_send) {
-            // (try to) send datagrams
-            master->send_cb(master->cb_data);
-        }
-
-schedule:
-        if (all_idle) {
-            set_current_state(TASK_INTERRUPTIBLE);
-            schedule_timeout(1);
-        } else {
-            schedule();
-        }
+#ifdef EC_USE_HRTIMER
+        ec_master_nanosleep(max(EC_THREAD_MIN_SLEEP_TIME_NS, sent_bytes * EC_BYTE_CONS_TX_TIME_NS));
+#else
+        schedule();
+#endif
     }
 
     EC_MASTER_DBG(master, 1, "EoE thread exiting...\n");
@@ -3147,6 +3350,9 @@ int ecrt_master_activate(ec_master_t *master)
     master->receive_cb = master->app_receive_cb;
     master->cb_data = master->app_cb_data;
 
+    atomic_set_release(&master->rps, EC_RPS_STATE_IDLE);
+    atomic_set_release(&master->dc_config_busy, 0);
+
 #ifdef EC_EOE
     ec_master_eoe_start(master, 0);
 #endif
@@ -3257,6 +3463,9 @@ void ecrt_master_deactivate(ec_master_t *master)
 
     master->active = 0;
 
+    atomic_set_release(&master->rps, EC_RPS_STATE_IDLE);
+    atomic_set_release(&master->dc_config_busy, 0);
+
     // send interval in IDLE phase
     ec_master_set_send_interval(master, IDLE_THREAD_SEND_INTERVAL);
 
@@ -3271,22 +3480,53 @@ void ecrt_master_deactivate(ec_master_t *master)
 
 /*****************************************************************************/
 
+static inline int ecrt_master_rps_update_pre_send(ec_master_t *master) {
+    // set S flag:
+    return atomic_fetch_or(EC_RPS_FLAG_S, &master->rps);
+}
+
+/*****************************************************************************/
+
+static inline void ecrt_master_rps_update_post_send(ec_master_t *master, int rps) {
+    // increase rps value whilst clearing S, P_PR_S flag:
+    int add = 2 * EC_RPS_FLAG_P_PR_S - (rps & EC_RPS_FLAG_P_PR_S) - EC_RPS_FLAG_S;
+    atomic_fetch_add(add, &master->rps);
+    wake_up_all(&master->rps_send_queue);
+}
+
+/*****************************************************************************/
+
 void ecrt_master_receive(ec_master_t *master)
 {
+    // set R flag:
+    int rps = atomic_fetch_or(EC_RPS_FLAG_R, &master->rps);
     ecrt_master_receive_internal(master);
+    // increase rps value whilst clearing R flag and setting (or retaining) P_PR_S flag:
+    int add = EC_RPS_FLAG_P_PR_S + (rps & EC_RPS_FLAG_P_PR_S) - EC_RPS_FLAG_R;
+    atomic_fetch_add(add, &master->rps);
+    wake_up_all(&master->rps_recv_queue);
 }
+
 /*****************************************************************************/
 
 size_t ecrt_master_send(ec_master_t *master)
 {
-    return ecrt_master_send_internal(master);
+    size_t sent_bytes;
+    int rps = ecrt_master_rps_update_pre_send(master);
+    sent_bytes = ecrt_master_send_internal(master);
+    ecrt_master_rps_update_post_send(master, rps);
+    return sent_bytes;
 }
 
 /*****************************************************************************/
 
 size_t ecrt_master_send_ext(ec_master_t *master)
 {
-    return ecrt_master_send_ext_internal(master);
+    size_t sent_bytes;
+    int rps = ecrt_master_rps_update_pre_send(master);
+    sent_bytes = ecrt_master_send_ext_internal(master);
+    ecrt_master_rps_update_post_send(master, rps);
+    return sent_bytes;
 }
 
 /*****************************************************************************/

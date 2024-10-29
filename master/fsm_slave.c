@@ -318,6 +318,7 @@ int ec_fsm_slave_action_config(
                     slave->force_config ? " (forced)" : "");
         }
 
+        atomic_set_release(&slave->config_busy, 1);
         if (atomic_fetch_inc(&slave->master->config_busy) == 0) {
             EC_MASTER_DBG(slave->master, 1, "Slave configuration busy.\n");
         }
@@ -391,6 +392,7 @@ void ec_fsm_slave_state_config(
         wake_up_interruptible(&slave->master->config_queue);
         EC_MASTER_DBG(slave->master, 1, "Slave configuration idle (all ready).\n");
     }
+    atomic_set_release(&slave->config_busy, 0);
 
     fsm->state = ec_fsm_slave_state_ready;
 }

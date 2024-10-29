@@ -160,6 +160,7 @@ void ec_slave_init(
     ec_mbox_data_init(&slave->mbox_mbg_data);
 
     slave->valid_mbox_data = 0;
+    atomic_set_release(&slave->config_busy, 0);
 }
 
 

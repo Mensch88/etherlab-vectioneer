@@ -50,9 +50,14 @@
  */
 #define EC_SYSTEM_TIME_TOLERANCE_NS 1000
 
+/** Time (in ms) to do nothing (stabilize) before checking/updating system time offset.
+ */
+#define EC_SYSTEM_TIME_NOP_WAIT_MS 50
+
 /*****************************************************************************/
 
 void ec_fsm_master_state_start(ec_fsm_master_t *);
+void ec_fsm_master_state_nop(ec_fsm_master_t *);
 void ec_fsm_master_state_broadcast(ec_fsm_master_t *);
 void ec_fsm_master_state_read_al_status(ec_fsm_master_t *);
 #ifdef EC_LOOP_CONTROL
@@ -72,11 +77,14 @@ void ec_fsm_master_state_dc_reset_filter(ec_fsm_master_t *);
 void ec_fsm_master_state_write_sii(ec_fsm_master_t *);
 void ec_fsm_master_state_reboot_slave(ec_fsm_master_t *);
 
+void ec_fsm_master_enter_nop(ec_fsm_master_t *, ec_fsm_master_state_t, unsigned int);
 void ec_fsm_master_enter_read_al_status(ec_fsm_master_t *);
 void ec_fsm_master_enter_dc_read_old_times(ec_fsm_master_t *);
 void ec_fsm_master_enter_clear_addresses(ec_fsm_master_t *);
 void ec_fsm_master_enter_write_system_times(ec_fsm_master_t *);
 void ec_fsm_master_enter_scan_slave(ec_fsm_master_t *);
+
+void ec_fsm_master_set_dc_offset_busy(ec_fsm_master_t *, unsigned int);
 
 /*****************************************************************************/
 
@@ -121,7 +129,11 @@ void ec_fsm_master_reset(
 {
     ec_device_index_t dev_idx;
 
+    ec_fsm_master_set_dc_offset_busy(fsm, 0);
+
     fsm->state = ec_fsm_master_state_start;
+    fsm->nop_leave = NULL;
+    fsm->nop_leave_jiffies = jiffies;
     fsm->idle = 0;
     fsm->dev_idx = EC_DEVICE_MAIN;
 
@@ -198,6 +210,7 @@ void ec_fsm_master_state_start(
 {
     ec_master_t *master = fsm->master;
 
+    ec_fsm_master_set_dc_offset_busy(fsm, 0);
     fsm->idle = 1;
 
     // check for emergency requests
@@ -255,6 +268,44 @@ void ec_fsm_master_state_start(
     ec_datagram_zero(fsm->datagram);
     fsm->datagram->device_index = fsm->dev_idx;
     fsm->state = ec_fsm_master_state_broadcast;
+}
+
+/*****************************************************************************/
+
+/** Start doing nothing for an amount of time
+ */
+void ec_fsm_master_enter_nop(
+        ec_fsm_master_t *fsm /**< Master state machine. */,
+        ec_fsm_master_state_t leave,
+        unsigned int wait_ms
+)
+{
+    if (leave) {
+        if (wait_ms) {
+            EC_MASTER_DBG(fsm->master, 1, "%s(0x%p, 0x%p, %u)\n", __func__, fsm, leave, wait_ms);
+            fsm->nop_leave = leave;
+            fsm->nop_leave_jiffies = jiffies + msecs_to_jiffies(wait_ms);
+            fsm->datagram->state = EC_DATAGRAM_INVALID;
+            fsm->state = ec_fsm_master_state_nop;
+            return;
+        }
+        leave(fsm);
+    }
+}
+
+/** Master state: NOP.
+ *
+ * Do nothing for an amount of time.
+ */
+void ec_fsm_master_state_nop(
+        ec_fsm_master_t *fsm /**< Master state machine. */
+        )
+{
+    if (fsm->nop_leave && time_after_eq(jiffies, fsm->nop_leave_jiffies)) {
+        EC_MASTER_DBG(fsm->master, 1, "%s() left\n", __func__);
+        fsm->nop_leave(fsm);
+        return;
+    }
 }
 
 /*****************************************************************************/
@@ -1175,6 +1226,12 @@ void ec_fsm_master_enter_write_system_times(
                 continue;
             }
 
+            if (!fsm->dc_offset_busy) {
+                ec_fsm_master_set_dc_offset_busy(fsm, 1);
+                ec_fsm_master_enter_nop(fsm, ec_fsm_master_enter_write_system_times, EC_SYSTEM_TIME_NOP_WAIT_MS);
+                return;
+            }
+
             EC_SLAVE_DBG(fsm->slave, 1, "Checking system time offset.\n");
 
             // read DC system time (0x0910, 64 bit)
@@ -1490,6 +1547,30 @@ void ec_fsm_master_state_write_sii(
         return; // processing another request
 
     ec_fsm_master_restart(fsm);
+}
+
+/*****************************************************************************/
+
+/** Set fsm->dc_sync_busy value and update fsm->slave->master->dc_config_busy
+ */
+void ec_fsm_master_set_dc_offset_busy(
+        ec_fsm_master_t *fsm, /**< Master state machine. */
+        unsigned int dc_offset_busy /**< New value for offset busy. */
+)
+{
+    ec_master_t *master = fsm->master;
+
+    dc_offset_busy = dc_offset_busy ? 1 : 0;
+    fsm->dc_offset_busy = fsm->dc_offset_busy ? 1 : 0;
+
+    if (dc_offset_busy != fsm->dc_offset_busy) {
+        if (dc_offset_busy) {
+            atomic_inc(&master->dc_config_busy);
+        } else {
+            atomic_add_unless(&master->dc_config_busy, -1, 0);
+        }
+        fsm->dc_offset_busy = dc_offset_busy;
+    }
 }
 
 /*****************************************************************************/

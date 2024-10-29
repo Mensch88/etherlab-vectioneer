@@ -120,6 +120,8 @@ void ec_fsm_slave_config_state_eoe_conf_preop(ec_fsm_slave_config_t *, ec_datagr
 void ec_fsm_slave_config_enter_eoe_conf_preop(ec_fsm_slave_config_t *, ec_datagram_t *);
 #endif
 
+void ec_fsm_slave_config_set_dc_sync_busy(ec_fsm_slave_config_t *, unsigned int);
+
 /*****************************************************************************/
 
 /** Constructor.
@@ -142,6 +144,7 @@ void ec_fsm_slave_config_init(
     fsm->fsm_coe = fsm_coe;
     fsm->fsm_soe = fsm_soe;
     fsm->fsm_pdo = fsm_pdo;
+    ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
 }
 
 /*****************************************************************************/
@@ -219,12 +222,15 @@ int ec_fsm_slave_config_exec(
         ec_datagram_t *datagram /**< Datagram to use. */
         )
 {
-    if (!ec_fsm_slave_config_running(fsm))
+    if (!ec_fsm_slave_config_running(fsm)) {
+        ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
         return 0;
+    }
 
     fsm->state(fsm, datagram);
 
     if (!ec_fsm_slave_config_running(fsm)) {
+        ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
         fsm->datagram = NULL;
         return 0;
     }
@@ -282,6 +288,7 @@ void ec_fsm_slave_config_enter_init(
         ec_datagram_t *datagram /**< Datagram to use. */
         )
 {
+    ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
     ec_fsm_change_start(fsm->fsm_change, fsm->slave, EC_SLAVE_STATE_INIT);
     ec_fsm_change_exec(fsm->fsm_change, datagram);
     fsm->state = ec_fsm_slave_config_state_init;
@@ -1480,6 +1487,7 @@ void ec_fsm_slave_config_enter_dc_cycle(
                 config->dc_sync[0].cycle_time, config->dc_sync[1].cycle_time);
 
         // set DC cycle times
+        ec_fsm_slave_config_set_dc_sync_busy(fsm, 1);
         ec_datagram_fpwr(datagram, slave->station_address, 0x09A0, 8);
         EC_WRITE_U32(datagram->data, config->dc_sync[0].cycle_time);
         EC_WRITE_U32(datagram->data + 4, config->dc_sync[1].cycle_time + 
@@ -1515,6 +1523,7 @@ void ec_fsm_slave_config_state_dc_cycle(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
+        ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
         fsm->state = ec_fsm_slave_config_state_error;
         EC_SLAVE_ERR(slave, "Failed to receive DC cycle times datagram: ");
         ec_datagram_print_state(fsm->datagram);
@@ -1523,6 +1532,7 @@ void ec_fsm_slave_config_state_dc_cycle(
 
     if (fsm->datagram->working_counter != 1) {
         slave->error_flag = 1;
+        ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
         fsm->state = ec_fsm_slave_config_state_error;
         EC_SLAVE_ERR(slave, "Failed to set DC cycle times: ");
         ec_datagram_print_wc_error(fsm->datagram);
@@ -1569,6 +1579,7 @@ void ec_fsm_slave_config_state_dc_sync_check(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
+        ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
         fsm->state = ec_fsm_slave_config_state_error;
         EC_SLAVE_ERR(slave, "Failed to receive DC sync check datagram: ");
         ec_datagram_print_state(fsm->datagram);
@@ -1577,6 +1588,7 @@ void ec_fsm_slave_config_state_dc_sync_check(
 
     if (fsm->datagram->working_counter != 1) {
         slave->error_flag = 1;
+        ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
         fsm->state = ec_fsm_slave_config_state_error;
         EC_SLAVE_ERR(slave, "Failed to check DC synchrony: ");
         ec_datagram_print_wc_error(fsm->datagram);
@@ -1643,6 +1655,7 @@ void ec_fsm_slave_config_state_dc_sync_check(
     EC_SLAVE_DBG(slave, 1, "Setting DC cyclic operation"
             " start time to %llu.\n", start_time);
 
+    ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
     ec_datagram_fpwr(datagram, slave->station_address, 0x0990, 8);
     EC_WRITE_U64(datagram->data, start_time);
     fsm->retries = EC_FSM_RETRIES;
@@ -1912,6 +1925,30 @@ void ec_fsm_slave_config_reconfigure(
             "configuration. Reconfiguring.");
 
     ec_fsm_slave_config_enter_init(fsm, datagram); // reconfigure
+}
+
+/*****************************************************************************/
+
+/** Set fsm->dc_sync_busy value and update fsm->slave->master->dc_config_busy
+ */
+void ec_fsm_slave_config_set_dc_sync_busy(
+        ec_fsm_slave_config_t *fsm, /**< slave state machine */
+        unsigned int dc_sync_busy /**< New value for sync busy. */
+)
+{
+    ec_master_t *master = fsm->slave->master;
+
+    dc_sync_busy = dc_sync_busy ? 1 : 0;
+    fsm->dc_sync_busy = fsm->dc_sync_busy ? 1 : 0;
+
+    if (dc_sync_busy != fsm->dc_sync_busy) {
+        if (dc_sync_busy) {
+            atomic_inc(&master->dc_config_busy);
+        } else {
+            atomic_add_unless(&master->dc_config_busy, -1, 0);
+        }
+        fsm->dc_sync_busy = dc_sync_busy;
+    }
 }
 
 /******************************************************************************

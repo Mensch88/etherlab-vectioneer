@@ -62,6 +62,8 @@ typedef struct {
 
 typedef struct ec_fsm_master ec_fsm_master_t; /**< \see ec_fsm_master */
 
+typedef void (*ec_fsm_master_state_t)(ec_fsm_master_t *);
+
 /** Finite state machine of an EtherCAT master.
  */
 struct ec_fsm_master {
@@ -69,7 +71,9 @@ struct ec_fsm_master {
     ec_datagram_t *datagram; /**< datagram used in the state machine */
     unsigned int retries; /**< retries on datagram timeout. */
 
-    void (*state)(ec_fsm_master_t *); /**< master state function */
+    ec_fsm_master_state_t state; /**< master state function */
+    ec_fsm_master_state_t nop_leave; /**< nop leave function */
+    unsigned long nop_leave_jiffies; /**< leave 'time' of nop */
     ec_device_index_t dev_idx; /**< Current device index (for scanning etc.).
                                 */
     int idle; /**< state machine is in idle phase */
@@ -80,6 +84,7 @@ struct ec_fsm_master {
                                                           responding slaves
                                                           for every device. */
     unsigned int rescan_required; /**< A bus rescan is required. */
+    unsigned int dc_offset_busy;
     ec_slave_state_t slave_states[EC_MAX_NUM_DEVICES]; /**< AL states of
                                                          responding slaves for
                                                          every device. */
