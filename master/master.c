@@ -1147,29 +1147,24 @@ void ec_master_queue_datagram(
         ec_datagram_t *datagram /**< datagram */
         )
 {
-    ec_datagram_t *queued_datagram;
-
     /* It is possible, that a datagram in the queue is re-initialized with the
      * ec_datagram_<type>() methods and then shall be queued with this method.
      * In that case, the state is already reset to EC_DATAGRAM_INIT. Check if
      * the datagram is queued to avoid duplicate queuing (which results in an
      * infinite loop!). Set the state to EC_DATAGRAM_QUEUED again, probably
      * causing an unmatched datagram. */
-    list_for_each_entry(queued_datagram, &master->datagram_queue, queue) {
-        if (queued_datagram == datagram) {
+    if (datagram->state != EC_DATAGRAM_INVALID) {
+        if (list_empty(&datagram->queue)) {
+            list_add_tail(&datagram->queue, &master->datagram_queue);
+        } else {
             datagram->skip_count++;
 #ifdef EC_RT_SYSLOG
-            EC_MASTER_DBG(master, 1,
-                    "Datagram %p already queued (skipping).\n", datagram);
+            EC_MASTER_DBG(master, 1, "Datagram %p already queued (skipping).\n", datagram);
 #endif
-            datagram->state = EC_DATAGRAM_QUEUED;
-            return;
         }
-    }
-
-    if (datagram->state != EC_DATAGRAM_INVALID) {
-        list_add_tail(&datagram->queue, &master->datagram_queue);
         datagram->state = EC_DATAGRAM_QUEUED;
+    } else if (!list_empty(&datagram->queue)) {
+        list_del_init(&datagram->queue);
     }
 }
 
@@ -1182,8 +1177,21 @@ void ec_master_queue_datagram_ext(
         ec_datagram_t *datagram /**< datagram */
         )
 {
-    ec_lock_down(&master->ext_queue_sem);
-    list_add_tail(&datagram->ext_queue, &master->ext_datagram_queue);
+    if (ec_lock_down_interruptible(&master->ext_queue_sem))
+        return;
+    if (datagram->state != EC_DATAGRAM_INVALID) {
+        if (list_empty(&datagram->ext_queue)) {
+            list_add_tail(&datagram->ext_queue, &master->ext_datagram_queue);
+        } else {
+            datagram->skip_count++;
+#ifdef EC_RT_SYSLOG
+            EC_MASTER_DBG(master, 1, "Datagram %p already queued (skipping).\n", datagram);
+#endif
+        }
+        datagram->state = EC_DATAGRAM_QUEUED;
+    } else if (!list_empty(&datagram->ext_queue)) {
+        list_del_init(&datagram->ext_queue);
+    }
     ec_lock_up(&master->ext_queue_sem);
 }
 

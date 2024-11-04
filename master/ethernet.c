@@ -515,6 +515,14 @@ void ec_eoe_clear(ec_eoe_t *eoe /**< EoE handler */)
 
     free_netdev(eoe->dev);
 
+    // remove from ext_datagram_queue
+    if (!ec_lock_down_interruptible(&eoe->master->ext_queue_sem)) {
+        if (!list_empty(&eoe->datagram.ext_queue)) {
+            list_del_init(&eoe->datagram.ext_queue);
+        }
+        ec_lock_up(&eoe->master->ext_queue_sem);
+    }
+
     ec_datagram_clear(&eoe->datagram);
 }
 
@@ -665,7 +673,11 @@ void ec_eoe_run(ec_eoe_t *eoe /**< EoE handler */)
     }
 
     // if the datagram was not sent, or is not yet received, skip this cycle
-    if (eoe->queue_datagram || eoe->datagram.state == EC_DATAGRAM_SENT) {
+    ec_datagram_state_t dg_state = eoe->datagram.state;
+    if (eoe->queue_datagram ||
+        dg_state == EC_DATAGRAM_DEFERRED ||
+        dg_state == EC_DATAGRAM_QUEUED ||
+        dg_state == EC_DATAGRAM_SENT) {
         return;
     }
 
