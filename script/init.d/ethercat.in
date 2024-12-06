@@ -156,13 +156,21 @@ case "${1}" in
 start)
     echo -n "Starting EtherCAT master @VERSION@ "
 
-    # get device name <-> mac address mapping
-    declare -A ND_MAC2NAME;
-    declare -A ND_NAME2MAC;
+    declare -A ND_MAC2NAME
+    declare -A ND_NAME2MAC
     for ND_NAME in $(basename -a /sys/class/net/*); do
-        ND_MAC=$(cat /sys/class/net/${ND_NAME}/address 2> /dev/null)
-        ND_MAC2NAME["${ND_MAC,,}"]="${ND_NAME}"
-        ND_NAME2MAC["${ND_NAME}"]="${ND_MAC,,}"
+        # Read the MAC address, gracefully handle if the file is missing or empty
+        ND_MAC=$(cat /sys/class/net/${ND_NAME}/address 2> /dev/null || echo "")
+        # Only proceed if a valid MAC address is retrieved
+        if [ -n "$ND_MAC" ]; then
+            # Convert MAC address to lowercase
+            ND_MAC="${ND_MAC,,}"
+            # Map MAC to interface name and vice versa
+            ND_MAC2NAME["${ND_MAC}"]="${ND_NAME}"
+            ND_NAME2MAC["${ND_NAME}"]="${ND_MAC}"
+        else
+            echo "Warning: No MAC address found for interface: $ND_NAME" >&2
+        fi
     done
 
     # construct DEVICES and BACKUPS from configuration variables
