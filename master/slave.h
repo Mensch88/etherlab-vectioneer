@@ -281,8 +281,7 @@ struct ec_slave
 
     ec_fsm_slave_t fsm; /**< Slave state machine. */
 
-    uint8_t read_mbox_busy; /**< Flag set during a mailbox read request. */
-    struct rt_mutex mbox_sem; /**< Semaphore protecting the check_mbox variable. */
+    atomic_t read_mbox_busy; /**< Flag set during a mailbox read request. */
 
 #ifdef EC_EOE
     ec_mbox_data_t mbox_eoe_frag_data; /**< Received mailbox data for EoE, type frame fragment. */
@@ -342,8 +341,12 @@ static inline int ec_slave_config_busy(ec_slave_t *slave) {
     return atomic_read_acquire(&slave->config_busy);
 }
 
-void ec_read_mbox_lock_clear(ec_slave_t *);
-int ec_read_mbox_locked(ec_slave_t *);
+static inline void ec_read_mbox_lock_clear(ec_slave_t *slave) {
+    atomic_set_release(&slave->read_mbox_busy, 0);
+}
+static inline int ec_read_mbox_locked(ec_slave_t *slave) {
+    return atomic_cmpxchg(&slave->read_mbox_busy, 0, 1);
+}
 
 /*****************************************************************************/
 
