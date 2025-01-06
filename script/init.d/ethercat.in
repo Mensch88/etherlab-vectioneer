@@ -74,6 +74,14 @@ fi
 
 . ${ETHERCAT_CONFIG}
 
+if [ -n "${MISC_PARAMETERS}" ]; then
+    if [ -n "${MASTER_ARGS}" ]; then
+        MASTER_ARGS="${MISC_PARAMETERS} ${MASTER_ARGS}"
+    else
+        MASTER_ARGS="${MISC_PARAMETERS}"
+    fi
+fi
+
 #------------------------------------------------------------------------------
 
 exit_success() {
