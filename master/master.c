@@ -2547,7 +2547,7 @@ static int ec_master_eoe_thread(void *priv_data)
 {
     ec_master_t *master = (ec_master_t *) priv_data;
     ec_eoe_t *eoe;
-    int rps_r, rps_s, rps_count, rps_startup_done, send_flags;
+    int rps_r, rps_s, rps_count, rps_startup_done, send_flags, send_enable;
     long wait_completed;
     unsigned long wait_timeout_jiffies;
     size_t sent_bytes;
@@ -2645,7 +2645,9 @@ rps_startup:
             wait_completed = 0;
 
             // only call send within thread when appropriate
-            if (!ec_master_dc_config_busy(master) && RPS_STATE_EQ(rps_s, EC_RPS_STATE_SEND, EC_RPS_STATE_IDLE) &&
+            send_enable = eoe_thread_send_enable || !ec_master_active(master);
+            if (send_enable && !ec_master_dc_config_busy(master) &&
+                RPS_STATE_EQ(rps_s, EC_RPS_STATE_SEND, EC_RPS_STATE_IDLE) &&
                 RPS_STATE_EQ(RPS, EC_RPS_STATE_IDLE)) {
                 if (master->send_cb == ec_master_internal_send_cb) {
                     ec_lock_down(&master->io_sem);

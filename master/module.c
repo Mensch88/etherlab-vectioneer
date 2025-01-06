@@ -62,6 +62,7 @@ static unsigned int backup_count; /**< Number of backup devices. */
 char *eoe_interfaces[MAX_EOE]; /**< EOE interfaces parameter. */
 unsigned int eoe_count; /**< Number of EOE interfaces. */
 bool eoe_autocreate = 0;  /**< Auto-create EOE interfaces. */
+bool eoe_thread_send_enable = 0;  /**< Enable sending EoE datagrams from EoE thread when master active. */
 #endif
 #ifdef EC_SII_OVERRIDE
 bool sii_override = 1;  /**< SII override parameter. */
@@ -100,6 +101,8 @@ module_param_array(eoe_interfaces, charp, &eoe_count, S_IRUGO);
 MODULE_PARM_DESC(eoe_interfaces, "EoE interfaces");
 module_param_named(eoe_autocreate, eoe_autocreate, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(eoe_autocreate, "EoE auto create mode");
+module_param_named(eoe_thread_send_enable, eoe_thread_send_enable, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(eoe_thread_send_enable, "Enable sending EoE datagrams from EoE thread when master active");
 #endif
 module_param_named(debug_level, debug_level, uint, S_IRUGO);
 MODULE_PARM_DESC(debug_level, "Debug level");
