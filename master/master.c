@@ -264,7 +264,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     ec_lock_init(&master->device_sem);
 
     master->phase = EC_ORPHANED;
-    master->active = 0;
+    atomic_set_release(&master->active, 0);
     master->config_changed = 0;
     master->injection_seq_fsm = 0;
     master->injection_seq_rt = 0;
@@ -1043,7 +1043,7 @@ void ec_master_leave_operation_phase(
         ec_master_t *master /**< EtherCAT master */
         )
 {
-    if (master->active) {
+    if (ec_master_active(master)) {
         ecrt_master_deactivate(master); // also clears config
     } else {
         ec_master_clear_config(master);
@@ -2562,7 +2562,7 @@ static int ec_master_eoe_thread(void *priv_data)
     while (!kthread_should_stop()) {
         wait_completed = 0;
 
-        if (!master->active && !ec_master_dc_config_busy(master) &&
+        if (!ec_master_active(master) && !ec_master_dc_config_busy(master) &&
             RPS_STATE_EQ(RPS, EC_RPS_STATE_IDLE)) {
             if (master->receive_cb == ec_master_internal_receive_cb) {
                 ec_lock_down(&master->io_sem);
@@ -3167,7 +3167,7 @@ void ec_master_request_op(
     unsigned int i;
     ec_slave_t *slave;
 
-    if (!master->active)
+    if (!ec_master_active(master))
         return;
 
     EC_MASTER_DBG(master, 1, "Requesting OP...\n");
@@ -3313,7 +3313,7 @@ int ecrt_master_activate(ec_master_t *master)
 
     EC_MASTER_DBG(master, 1, "ecrt_master_activate(master = 0x%p)\n", master);
 
-    if (master->active) {
+    if (ec_master_active(master)) {
         EC_MASTER_WARN(master, "%s: Master already active!\n", __func__);
         return 0;
     }
@@ -3366,7 +3366,7 @@ int ecrt_master_activate(ec_master_t *master)
     /* Allow scanning after a topology change. */
     ec_master_fetch_clear_flags(&master->scan_flags, EC_SCAN_FLAG_DISALLOW);
 
-    master->active = 1;
+    atomic_set_release(&master->active, 1);
 
     // notify state machine, that the configuration shall now be applied
     master->config_changed = 1;
@@ -3384,7 +3384,7 @@ void ecrt_master_deactivate_slaves(ec_master_t *master)
 
     EC_MASTER_DBG(master, 1, "%s(master = 0x%p)\n", __func__, master);
 
-    if (!master->active) {
+    if (!ec_master_active(master)) {
         EC_MASTER_WARN(master, "%s: Master not active.\n", __func__);
         return;
     }
@@ -3420,7 +3420,7 @@ void ecrt_master_deactivate(ec_master_t *master)
 
     EC_MASTER_DBG(master, 1, "%s(master = 0x%p)\n", __func__, master);
 
-    if (!master->active) {
+    if (!ec_master_active(master)) {
         EC_MASTER_WARN(master, "%s: Master not active.\n", __func__);
         ec_master_clear_config(master);
         return;
@@ -3461,7 +3461,7 @@ void ecrt_master_deactivate(ec_master_t *master)
      * request (after ec_master_enter_operation_phase() is called). */
     ec_master_fetch_set_flags(&master->scan_flags, EC_SCAN_FLAG_DISALLOW);
 
-    master->active = 0;
+    atomic_set_release(&master->active, 0);
 
     atomic_set_release(&master->rps, EC_RPS_STATE_IDLE);
     atomic_set_release(&master->dc_config_busy, 0);

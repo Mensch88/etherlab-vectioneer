@@ -1217,7 +1217,7 @@ void ec_fsm_master_enter_write_system_times(
 {
     ec_master_t *master = fsm->master;
 
-    if (master->active) {
+    if (ec_master_active(master)) {
 
         while (fsm->slave < master->slaves + master->slave_count) {
             if (!fsm->slave->base_dc_supported

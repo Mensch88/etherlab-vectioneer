@@ -236,7 +236,7 @@ struct ec_master {
     ec_fsm_master_t fsm; /**< Master state machine. */
     ec_datagram_t fsm_datagram; /**< Datagram used for state machines. */
     ec_master_phase_t phase; /**< Master phase. */
-    unsigned int active; /**< Master has been activated. */
+    atomic_t active; /**< Master has been activated. */
     unsigned int config_changed; /**< The configuration changed. */
     unsigned int injection_seq_fsm; /**< Datagram injection sequence number
                                       for the FSM side. */
@@ -419,6 +419,10 @@ static inline int ec_master_fetch_clear_flags(atomic_t *v, int flags) {
 
 static inline unsigned int ec_master_scan_busy(ec_master_t *master) {
     return (atomic_read_acquire(&master->scan_flags) & EC_SCAN_FLAG_BUSY) ? 1U : 0U;
+}
+
+static inline unsigned int ec_master_active(ec_master_t *master) {
+    return atomic_read_acquire(&master->active) ? 1U : 0U;
 }
 
 unsigned int ec_master_config_count(const ec_master_t *);

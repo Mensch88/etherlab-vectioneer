@@ -120,7 +120,7 @@ static ATTRIBUTES int ec_ioctl_master(
     io.eoe_handler_count = ec_master_eoe_handler_count(master);
 #endif
     io.phase = (uint8_t) master->phase;
-    io.active = (uint8_t) master->active;
+    io.active = ec_master_active(master);
     io.scan_busy = ec_master_scan_busy(master);
 
     ec_lock_up(&master->master_sem);
