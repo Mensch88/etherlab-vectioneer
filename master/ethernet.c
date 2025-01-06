@@ -850,7 +850,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
  */
 void ec_eoe_state_rx_fetch_data(ec_eoe_t *eoe /**< EoE handler */)
 {
-    size_t rec_size, data_size;
+    size_t rec_size, data_size, mbox_mtu;
     uint8_t *data, eoe_type, last_fragment, time_appended, mbox_prot;
     uint8_t fragment_offset, fragment_number;
 #if EOE_DEBUG_LEVEL >= 2
@@ -1017,6 +1017,22 @@ void ec_eoe_state_rx_fetch_data(ec_eoe_t *eoe /**< EoE handler */)
         EC_SLAVE_DBG(eoe->slave, 0, "EoE %s RX expecting fragment %u\n",
                eoe->dev->name, eoe->rx_expected_fragment);
 #endif
+        // Experimental: Increase speed by attempting to read a max of N fragments without checking. N is defined
+        //               by the mtu set in 'eoe_rx_quick_fragments_mtu' and the Rx mailbox size of the slave.
+        //               Seen in practice: Slave sends with a mtu of 1500 (so eoe_rx_quick_fragments_mtu = 1500),
+        //               and the Rx mailbox size of the slave (commonly 256, 512, 1024). With 1024, N = 2.
+        if (eoe_rx_quick_fragments_mtu) {
+            mbox_mtu = eoe->slave->configured_rx_mailbox_size - ETH_HLEN - 10;
+            if (eoe->rx_expected_fragment % max(DIV_ROUND_UP(eoe_rx_quick_fragments_mtu, mbox_mtu), 2) &&
+                !ec_read_mbox_locked(eoe->slave)) {
+                eoe->have_mbox_lock = 1;
+                eoe->rx_idle = 0;
+                ec_slave_mbox_prepare_fetch(eoe->slave, &eoe->datagram);
+                eoe->queue_datagram = 1;
+                eoe->state = ec_eoe_state_rx_fetch;
+                return;
+            }
+        }
         eoe->state = ec_eoe_state_rx_start;
     }
 }

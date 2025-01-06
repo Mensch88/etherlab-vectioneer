@@ -469,6 +469,7 @@ extern char *eoe_interfaces[MAX_EOE]; // see module.c
 extern unsigned int eoe_count; // see module.c
 extern bool eoe_autocreate; // see module.c
 extern bool eoe_thread_send_enable; // see module.c
+extern unsigned int eoe_rx_quick_fragments_mtu; // see module.c
 #endif
 #ifdef EC_SII_OVERRIDE
 extern bool sii_override; // see module.c
