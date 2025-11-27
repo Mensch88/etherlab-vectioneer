@@ -194,7 +194,8 @@ void ecrt_foe_request_file(
         uint32_t password /** password */
         )
 {
-    strlcpy((char*) req->file_name, file_name, sizeof(req->file_name));
+    strncpy((char*)req->file_name, file_name, sizeof(req->file_name));
+    req->file_name[sizeof(req->file_name) - 1] = '\0';
     req->password = password;
 }
 

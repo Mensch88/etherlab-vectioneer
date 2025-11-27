@@ -38,6 +38,14 @@ MODULE_AUTHOR("Patrick Bruenn <p.bruenn@beckhoff.com>");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
+#define REMOVE_RESULT int
+#define REMOVE_OK 0
+#else
+#define REMOVE_RESULT void
+#define REMOVE_OK
+#endif
+
 /**
  * EtherCAT frame to enable forwarding on EtherCAT Terminals
  */
@@ -990,14 +998,14 @@ static int ccat_eth_dma_probe(struct platform_device *pdev)
 	return ccat_eth_init_netdev(priv);
 }
 
-static int ccat_eth_dma_remove(struct platform_device *pdev)
+static REMOVE_RESULT ccat_eth_dma_remove(struct platform_device *pdev)
 {
 	struct ccat_function *const func = pdev->dev.platform_data;
 	struct ccat_eth_priv *const eth = func->private_data;
 	eth->unregister(eth->netdev);
 	ccat_eth_priv_free(eth);
 	free_netdev(eth->netdev);
-	return 0;
+	return REMOVE_OK;
 }
 
 static struct platform_driver ccat_eth_dma_driver = {
@@ -1024,14 +1032,14 @@ static int ccat_eth_eim_probe(struct platform_device *pdev)
 	return ccat_eth_init_netdev(priv);
 }
 
-static int ccat_eth_eim_remove(struct platform_device *pdev)
+static REMOVE_RESULT ccat_eth_eim_remove(struct platform_device *pdev)
 {
 	struct ccat_function *const func = pdev->dev.platform_data;
 	struct ccat_eth_priv *const eth = func->private_data;
 	eth->unregister(eth->netdev);
 	ccat_eth_priv_free(eth);
 	free_netdev(eth->netdev);
-	return 0;
+	return REMOVE_OK;
 }
 
 static struct platform_driver ccat_eth_eim_driver = {
