@@ -1,6 +1,4 @@
-#------------------------------------------------------------------------------
-#
-#  $Id$
+#-----------------------------------------------------------------------------
 #
 #  Copyright (C) 2006-2008  Florian Pose, Ingenieurgemeinschaft IgH
 #
@@ -19,29 +17,11 @@
 #  with the IgH EtherCAT Master; if not, write to the Free Software
 #  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #
-#  ---
-#
-#  The license mentioned above concerns the source code only. Using the
-#  EtherCAT technology and brand is only permitted in compliance with the
-#  industrial property and similar rights of Beckhoff Automation GmbH.
-#
-#------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------
+
+include $(top_srcdir)/Makefile.kbuild
 
 EXTRA_DIST = \
-	Kbuild.in \
 	module.h
 
-BUILT_SOURCES = \
-	Kbuild
-
-modules:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="@abs_srcdir@" modules
-
-modules_install:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="@abs_srcdir@" \
-		INSTALL_MOD_DIR="$(INSTALL_MOD_DIR)" modules_install
-
-clean-local:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="@abs_srcdir@" clean
-
-#------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------

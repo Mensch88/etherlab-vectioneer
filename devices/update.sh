@@ -11,8 +11,8 @@ KERNELVER=$3
 
 set -x
 
-for f in $KERNELDIR/drivers/net/ethernet/{realtek/8139too,realtek/r8169,intel/e100}.c; do
-    echo $f
+for f in $KERNELDIR/drivers/net/ethernet/{realtek/8139too.c,intel/e100.c}; do
+    echo Driver $f
     b=$(basename $f)
     o=${b/\./-$KERNELVER-orig.}
     e=${b/\./-$KERNELVER-ethercat.}
@@ -21,6 +21,9 @@ for f in $KERNELDIR/drivers/net/ethernet/{realtek/8139too,realtek/r8169,intel/e1
     cp -v $o $e
     op=${b/\./-$PREVER-orig.}
     ep=${b/\./-$PREVER-ethercat.}
-    diff -up $op $ep | patch -p1 $e
+    diff -u $op $ep | patch -p1 $e
     git add $o $e
+    echo -e "\t$e \\\\\n\t$o \\\\" >> Makefile.am
 done
+
+echo "Remember to update Makefile.am!"

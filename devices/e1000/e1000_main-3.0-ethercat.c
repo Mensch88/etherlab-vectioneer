@@ -217,7 +217,7 @@ static struct pci_driver e1000_driver = {
 	.err_handler = &e1000_err_handler
 };
 
-MODULE_AUTHOR("Florian Pose <fp@igh-essen.com>");
+MODULE_AUTHOR("Florian Pose <fp@igh.de>");
 MODULE_DESCRIPTION("EtherCAT-capable Intel(R) PRO/1000 Network Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);
@@ -4962,7 +4962,7 @@ static int e1000_resume(struct pci_dev *pdev)
 
 static void e1000_shutdown(struct pci_dev *pdev)
 {
-	bool wake = false;
+	bool wake;
 
 	__e1000_shutdown(pdev, &wake);
 

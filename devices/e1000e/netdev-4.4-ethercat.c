@@ -48,6 +48,15 @@
 
 #include "e1000-4.4-ethercat.h"
 
+static inline int check_arbiter_wa_flag(const struct e1000_adapter *adapter)
+{
+#ifdef EC_DISABLE_E1000E_WORKAROUND
+	return !adapter->ecdev && (adapter->flags2 & FLAG2_PCIM2PCI_ARBITER_WA);
+#else
+	return adapter->flags2 & FLAG2_PCIM2PCI_ARBITER_WA;
+#endif
+}
+
 #define DRV_EXTRAVERSION "-k-EtherCAT"
 
 #define DRV_VERSION "3.2.6" DRV_EXTRAVERSION
@@ -710,7 +719,7 @@ map_skb:
 			 * such as IA-64).
 			 */
 			wmb();
-			if (adapter->flags2 & FLAG2_PCIM2PCI_ARBITER_WA)
+			if (check_arbiter_wa_flag(adapter))
 				e1000e_update_rdt_wa(rx_ring, i);
 			else
 				writel(i, rx_ring->tail);
@@ -810,7 +819,7 @@ static void e1000_alloc_rx_buffers_ps(struct e1000_ring *rx_ring,
 			 * such as IA-64).
 			 */
 			wmb();
-			if (adapter->flags2 & FLAG2_PCIM2PCI_ARBITER_WA)
+			if (check_arbiter_wa_flag(adapter))
 				e1000e_update_rdt_wa(rx_ring, i << 1);
 			else
 				writel(i << 1, rx_ring->tail);
@@ -902,7 +911,7 @@ check_page:
 		 * such as IA-64).
 		 */
 		wmb();
-		if (adapter->flags2 & FLAG2_PCIM2PCI_ARBITER_WA)
+		if (check_arbiter_wa_flag(adapter))
 			e1000e_update_rdt_wa(rx_ring, i);
 		else
 			writel(i, rx_ring->tail);
@@ -1046,6 +1055,7 @@ static bool e1000_clean_rx_irq(struct e1000_ring *rx_ring, int *work_done,
 
 		if (adapter->ecdev) {
 			ecdev_receive(adapter->ecdev, skb->data, length);
+			adapter->ec_watchdog_jiffies = jiffies;
 		} else {
 		    e1000_receive_skb(adapter, netdev, skb, staterr,
 				      rx_desc->wb.upper.vlan);
@@ -1488,6 +1498,7 @@ copydone:
 
 		if (adapter->ecdev) {
 			ecdev_receive(adapter->ecdev, skb->data, length);
+			adapter->ec_watchdog_jiffies = jiffies;
 		} else {
 			e1000_receive_skb(adapter, netdev, skb, staterr,
 					rx_desc->wb.middle.vlan);
@@ -1678,6 +1689,7 @@ static bool e1000_clean_jumbo_rx_irq(struct e1000_ring *rx_ring, int *work_done,
 
 		if (adapter->ecdev) {
 			ecdev_receive(adapter->ecdev, skb->data, length);
+			adapter->ec_watchdog_jiffies = jiffies;
 		} else {
 			e1000_receive_skb(adapter, netdev, skb, staterr,
 					  rx_desc->wb.upper.vlan);
@@ -4226,7 +4238,7 @@ void e1000e_reset(struct e1000_adapter *adapter)
 
 /**
  * e1000e_trigger_lsc - trigger an LSC interrupt
- * @adapter: 
+ * @adapter:
  *
  * Fire a link status change interrupt to start the watchdog.
  **/
@@ -5948,7 +5960,7 @@ static netdev_tx_t e1000_xmit_frame(struct sk_buff *skb,
 
 		if (!skb->xmit_more ||
 				netif_xmit_stopped(netdev_get_tx_queue(netdev, 0))) {
-			if (adapter->flags2 & FLAG2_PCIM2PCI_ARBITER_WA)
+			if (check_arbiter_wa_flag(adapter))
 				e1000e_update_tdt_wa(tx_ring,
 						tx_ring->next_to_use);
 			else
@@ -7102,7 +7114,7 @@ void ec_poll(struct net_device *netdev)
 	if (jiffies - adapter->ec_watchdog_jiffies >= 2 * HZ) {
 		struct e1000_hw *hw = &adapter->hw;
 		hw->mac.get_link_status = true;
-		e1000_watchdog((unsigned long) adapter);
+		e1000_watchdog_task(&adapter->watchdog_task);
 		adapter->ec_watchdog_jiffies = jiffies;
 	}
 
@@ -7428,6 +7440,13 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 			goto err_register;
 		}
 		adapter->ec_watchdog_jiffies = jiffies;
+		if (adapter->flags2 & FLAG2_PCIM2PCI_ARBITER_WA) {
+			e_warn("Driver uses Workaround with busy wait "
+				"which causes a lot of jitter! Compile with "
+				"-DEC_DISABLE_E1000E_WORKAROUND do disable the "
+				"workaround for EtherCAT operations."
+			);
+		}
 	} else {
 		strlcpy(netdev->name, "eth%d", sizeof(netdev->name));
 		err = register_netdev(netdev);

@@ -27,15 +27,23 @@
 #include <linux/kernel.h>
 #include <linux/pci.h>
 #include <linux/mfd/core.h>
+#include <linux/version.h>
 #include "../ecdev.h"
 
 #define DRV_EXTRAVERSION "-ec"
-#define DRV_VERSION      "0.16" DRV_EXTRAVERSION
+#define DRV_VERSION      "0.19" DRV_EXTRAVERSION
 #define DRV_DESCRIPTION  "Beckhoff CCAT Ethernet/EtherCAT Network Driver"
 
 #undef pr_fmt
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
+#define REMOVE_RESULT int
+#define REMOVE_OK 0
+#else
+#define REMOVE_RESULT void
+#define REMOVE_OK
+#endif
 
 /**
  * CCAT function type identifiers (u16)
@@ -83,6 +91,7 @@ struct cdev_buffer {
 
 extern int ccat_cdev_open(struct inode *const i, struct file *const f);
 extern int ccat_cdev_release(struct inode *const i, struct file *const f);
+extern loff_t ccat_cdev_llseek(struct file *f, loff_t offset, int whence);
 
 /**
  * struct ccat_device - CCAT device representation
@@ -141,7 +150,7 @@ struct ccat_class {
 	struct file_operations fops;
 };
 
-extern int ccat_cdev_remove(struct platform_device *pdev);
+extern REMOVE_RESULT ccat_cdev_remove(struct platform_device *pdev);
 extern int ccat_cdev_probe(struct ccat_function *func,
 			   struct ccat_class *cdev_class, size_t iosize);
 

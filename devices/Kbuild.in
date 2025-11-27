@@ -1,6 +1,4 @@
-#------------------------------------------------------------------------------
-#
-#  $Id$
+#-----------------------------------------------------------------------------
 #
 #  Copyright (C) 2006-2008  Florian Pose, Ingenieurgemeinschaft IgH
 #
@@ -21,15 +19,17 @@
 #
 #  ---
 #
-#  The license mentioned above concerns the source code only. Using the
-#  EtherCAT technology and brand is only permitted in compliance with the
-#  industrial property and similar rights of Beckhoff Automation GmbH.
-#
-#  ---
-#
 #  vim: syntax=make
 #
-#------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------
+
+src := @abs_srcdir@
+ccflags-y := -I@abs_top_builddir@
+
+ifeq (@ENABLE_DRIVER_RESOURCE_VERIFYING@,1)
+	ccflags-y += -DEC_ENABLE_DRIVER_RESOURCE_VERIFYING
+endif
+
 
 REV := $(shell if test -s $(src)/../revision; then \
 		cat $(src)/../revision; \
@@ -70,30 +70,35 @@ ifeq (@ENABLE_E1000E@,1)
 	obj-m += e1000e/
 endif
 
+ifeq (@ENABLE_GENET@,1)
+	obj-m += genet/
+endif
+
 ifeq (@ENABLE_IGB@,1)
 	obj-m += igb/
 endif
 
-ifeq (@ENABLE_CX2100@,1)
-	obj-m += cx2100/
+ifeq (@ENABLE_IGC@,1)
+	obj-m += igc/
 endif
 
 ifeq (@ENABLE_R8169@,1)
+ifeq (@R8169_IN_SUBDIR@,1)
+	obj-m += r8169/
+else
 	EC_R8169_OBJ := r8169-@KERNEL_R8169@-ethercat.o
 	obj-m += ec_r8169.o
 	ec_r8169-objs := $(EC_R8169_OBJ)
 	CFLAGS_$(EC_R8169_OBJ) = -DREV=$(REV)
 endif
+endif
 
-ifeq (@ENABLE_R8152@,1)
-	EC_R8152_OBJ := r8152-@KERNEL_R8152@-ethercat.o
-	obj-m += ec_r8152.o
-	ec_r8152-objs := $(EC_R8152_OBJ)
-	CFLAGS_$(EC_R8152_OBJ) = -DREV=$(REV)
+ifeq (@ENABLE_STMMAC@,1)
+	obj-m += stmmac/
 endif
 
 KBUILD_EXTRA_SYMBOLS := \
 	@abs_top_builddir@/$(LINUX_SYMVERS) \
 	@abs_top_builddir@/master/$(LINUX_SYMVERS)
 
-#------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------

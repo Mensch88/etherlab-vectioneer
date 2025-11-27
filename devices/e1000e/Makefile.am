@@ -1,6 +1,4 @@
-#------------------------------------------------------------------------------
-#
-#  $Id: Makefile.am,v 792892ab4806 2014/10/28 15:54:59 fp $
+#-----------------------------------------------------------------------------
 #
 #  Copyright (C) 2006-2008  Florian Pose, Ingenieurgemeinschaft IgH
 #
@@ -19,13 +17,9 @@
 #  with the IgH EtherCAT Master; if not, write to the Free Software
 #  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #
-#  ---
-#
-#  The license mentioned above concerns the source code only. Using the
-#  EtherCAT technology and brand is only permitted in compliance with the
-#  industrial property and similar rights of Beckhoff Automation GmbH.
-#
-#------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------
+
+include $(top_srcdir)/Makefile.kbuild
 
 EXTRA_DIST = \
 	80003es2lan-3.10-ethercat.c \
@@ -44,46 +38,44 @@ EXTRA_DIST = \
 	80003es2lan-3.16-ethercat.h \
 	80003es2lan-3.16-orig.c \
 	80003es2lan-3.16-orig.h \
-	80003es2lan-3.18-ethercat.c \
-	80003es2lan-3.18-ethercat.h \
-	80003es2lan-3.18-orig.c \
-	80003es2lan-3.18-orig.h \
 	80003es2lan-3.4-ethercat.c \
 	80003es2lan-3.4-orig.c \
 	80003es2lan-3.6-ethercat.c \
 	80003es2lan-3.6-orig.c \
 	80003es2lan-3.8-ethercat.c \
 	80003es2lan-3.8-orig.c \
-	80003es2lan-4.1-ethercat.c \
-	80003es2lan-4.1-ethercat.h \
-	80003es2lan-4.1-orig.c \
-	80003es2lan-4.1-orig.h \
 	80003es2lan-4.4-ethercat.c \
 	80003es2lan-4.4-ethercat.h \
 	80003es2lan-4.4-orig.c \
 	80003es2lan-4.4-orig.h \
-	80003es2lan-4.9-ethercat.c \
-	80003es2lan-4.9-ethercat.h \
-	80003es2lan-4.9-orig.c \
-	80003es2lan-4.9-orig.h \
-	80003es2lan-4.14-ethercat.c \
-	80003es2lan-4.14-ethercat.h \
-	80003es2lan-4.14-orig.c \
-	80003es2lan-4.14-orig.h \
-	80003es2lan-4.19-ethercat.c \
-	80003es2lan-4.19-ethercat.h \
-	80003es2lan-4.19-orig.c \
-	80003es2lan-4.19-orig.h \
-	82571-2.6.32-ethercat.c \
-	82571-2.6.32-orig.c \
-	82571-2.6.33-ethercat.c \
-	82571-2.6.33-orig.c \
-	82571-2.6.34-ethercat.c \
-	82571-2.6.34-orig.c \
-	82571-2.6.35-ethercat.c \
-	82571-2.6.35-orig.c \
-	82571-2.6.37-ethercat.c \
-	82571-2.6.37-orig.c \
+	80003es2lan-5.10-ethercat.c \
+	80003es2lan-5.10-ethercat.h \
+	80003es2lan-5.10-orig.c \
+	80003es2lan-5.10-orig.h \
+	80003es2lan-5.14-ethercat.c \
+	80003es2lan-5.14-ethercat.h \
+	80003es2lan-5.14-orig.c \
+	80003es2lan-5.14-orig.h \
+	80003es2lan-5.15-ethercat.c \
+	80003es2lan-5.15-ethercat.h \
+	80003es2lan-5.15-orig.c \
+	80003es2lan-5.15-orig.h \
+	80003es2lan-5.4-ethercat.c \
+	80003es2lan-5.4-ethercat.h \
+	80003es2lan-5.4-orig.c \
+	80003es2lan-5.4-orig.h \
+	80003es2lan-6.1-ethercat.c \
+	80003es2lan-6.1-ethercat.h \
+	80003es2lan-6.1-orig.c \
+	80003es2lan-6.1-orig.h \
+	80003es2lan-6.12-ethercat.c \
+	80003es2lan-6.12-ethercat.h \
+	80003es2lan-6.12-orig.c \
+	80003es2lan-6.12-orig.h \
+	80003es2lan-6.4-ethercat.c \
+	80003es2lan-6.4-ethercat.h \
+	80003es2lan-6.4-orig.c \
+	80003es2lan-6.4-orig.h \
 	82571-3.10-ethercat.c \
 	82571-3.10-ethercat.h \
 	82571-3.10-orig.c \
@@ -100,10 +92,6 @@ EXTRA_DIST = \
 	82571-3.16-ethercat.h \
 	82571-3.16-orig.c \
 	82571-3.16-orig.h \
-	82571-3.18-ethercat.c \
-	82571-3.18-ethercat.h \
-	82571-3.18-orig.c \
-	82571-3.18-orig.h \
 	82571-3.2-ethercat.c \
 	82571-3.2-orig.c \
 	82571-3.4-ethercat.c \
@@ -112,37 +100,38 @@ EXTRA_DIST = \
 	82571-3.6-orig.c \
 	82571-3.8-ethercat.c \
 	82571-3.8-orig.c \
-	82571-4.1-ethercat.c \
-	82571-4.1-ethercat.h \
-	82571-4.1-orig.c \
-	82571-4.1-orig.h \
 	82571-4.4-ethercat.c \
 	82571-4.4-ethercat.h \
 	82571-4.4-orig.c \
 	82571-4.4-orig.h \
-	82571-4.9-ethercat.c \
-	82571-4.9-ethercat.h \
-	82571-4.9-orig.c \
-	82571-4.9-orig.h \
-	82571-4.14-ethercat.c \
-	82571-4.14-ethercat.h \
-	82571-4.14-orig.c \
-	82571-4.14-orig.h \
-	82571-4.19-ethercat.c \
-	82571-4.19-ethercat.h \
-	82571-4.19-orig.c \
-	82571-4.19-orig.h \
-	Kbuild.in \
-	defines-2.6.32-ethercat.h \
-	defines-2.6.32-orig.h \
-	defines-2.6.33-ethercat.h \
-	defines-2.6.33-orig.h \
-	defines-2.6.34-ethercat.h \
-	defines-2.6.34-orig.h \
-	defines-2.6.35-ethercat.h \
-	defines-2.6.35-orig.h \
-	defines-2.6.37-ethercat.h \
-	defines-2.6.37-orig.h \
+	82571-5.10-ethercat.c \
+	82571-5.10-ethercat.h \
+	82571-5.10-orig.c \
+	82571-5.10-orig.h \
+	82571-5.14-ethercat.c \
+	82571-5.14-ethercat.h \
+	82571-5.14-orig.c \
+	82571-5.14-orig.h \
+	82571-5.15-ethercat.c \
+	82571-5.15-ethercat.h \
+	82571-5.15-orig.c \
+	82571-5.15-orig.h \
+	82571-5.4-ethercat.c \
+	82571-5.4-ethercat.h \
+	82571-5.4-orig.c \
+	82571-5.4-orig.h \
+	82571-6.1-ethercat.c \
+	82571-6.1-ethercat.h \
+	82571-6.1-orig.c \
+	82571-6.1-orig.h \
+	82571-6.12-ethercat.c \
+	82571-6.12-ethercat.h \
+	82571-6.12-orig.c \
+	82571-6.12-orig.h \
+	82571-6.4-ethercat.c \
+	82571-6.4-ethercat.h \
+	82571-6.4-orig.c \
+	82571-6.4-orig.h \
 	defines-3.10-ethercat.h \
 	defines-3.10-orig.h \
 	defines-3.12-ethercat.h \
@@ -151,8 +140,6 @@ EXTRA_DIST = \
 	defines-3.14-orig.h \
 	defines-3.16-ethercat.h \
 	defines-3.16-orig.h \
-	defines-3.18-ethercat.h \
-	defines-3.18-orig.h \
 	defines-3.2-ethercat.h \
 	defines-3.2-orig.h \
 	defines-3.4-ethercat.h \
@@ -161,26 +148,22 @@ EXTRA_DIST = \
 	defines-3.6-orig.h \
 	defines-3.8-ethercat.h \
 	defines-3.8-orig.h \
-	defines-4.1-ethercat.h \
-	defines-4.1-orig.h \
 	defines-4.4-ethercat.h \
 	defines-4.4-orig.h \
-	defines-4.9-ethercat.h \
-	defines-4.9-orig.h \
-	defines-4.14-ethercat.h \
-	defines-4.14-orig.h \
-	defines-4.19-ethercat.h \
-	defines-4.19-orig.h \
-	e1000-2.6.32-ethercat.h \
-	e1000-2.6.32-orig.h \
-	e1000-2.6.33-ethercat.h \
-	e1000-2.6.33-orig.h \
-	e1000-2.6.34-ethercat.h \
-	e1000-2.6.34-orig.h \
-	e1000-2.6.35-ethercat.h \
-	e1000-2.6.35-orig.h \
-	e1000-2.6.37-ethercat.h \
-	e1000-2.6.37-orig.h \
+	defines-5.10-ethercat.h \
+	defines-5.10-orig.h \
+	defines-5.14-ethercat.h \
+	defines-5.14-orig.h \
+	defines-5.15-ethercat.h \
+	defines-5.15-orig.h \
+	defines-5.4-ethercat.h \
+	defines-5.4-orig.h \
+	defines-6.1-ethercat.h \
+	defines-6.1-orig.h \
+	defines-6.12-ethercat.h \
+	defines-6.12-orig.h \
+	defines-6.4-ethercat.h \
+	defines-6.4-orig.h \
 	e1000-3.10-ethercat.h \
 	e1000-3.10-orig.h \
 	e1000-3.12-ethercat.h \
@@ -189,8 +172,6 @@ EXTRA_DIST = \
 	e1000-3.14-orig.h \
 	e1000-3.16-ethercat.h \
 	e1000-3.16-orig.h \
-	e1000-3.18-ethercat.h \
-	e1000-3.18-orig.h \
 	e1000-3.2-ethercat.h \
 	e1000-3.2-orig.h \
 	e1000-3.4-ethercat.h \
@@ -199,38 +180,28 @@ EXTRA_DIST = \
 	e1000-3.6-orig.h \
 	e1000-3.8-ethercat.h \
 	e1000-3.8-orig.h \
-	e1000-4.1-ethercat.h \
-	e1000-4.1-orig.h \
 	e1000-4.4-ethercat.h \
 	e1000-4.4-orig.h \
-	e1000-4.9-ethercat.h \
-	e1000-4.9-orig.h \
-	e1000-4.14-ethercat.h \
-	e1000-4.14-orig.h \
-	e1000-4.19-ethercat.h \
-	e1000-4.19-orig.h \
-	es2lan-2.6.32-ethercat.c \
-	es2lan-2.6.32-orig.c \
-	es2lan-2.6.33-ethercat.c \
-	es2lan-2.6.33-orig.c \
-	es2lan-2.6.34-ethercat.c \
-	es2lan-2.6.34-orig.c \
-	es2lan-2.6.35-ethercat.c \
-	es2lan-2.6.35-orig.c \
-	es2lan-2.6.37-ethercat.c \
-	es2lan-2.6.37-orig.c \
+	e1000-5.10-ethercat.h \
+	e1000-5.10-orig.h \
+	e1000-5.14-ethercat.h \
+	e1000-5.14-orig.h \
+	e1000-5.15-ethercat.h \
+	e1000-5.15-orig.h \
+	e1000-5.4-ethercat.h \
+	e1000-5.4-orig.h \
+	e1000-6.1-ethercat.h \
+	e1000-6.1-orig.h \
+	e1000-6.12-ethercat.h \
+	e1000-6.12-orig.h \
+	e1000-6.4-ethercat.h \
+	e1000-6.4-orig.h \
+	e1000e_trace-6.12-ethercat.h \
+	e1000e_trace-6.12-orig.h \
+	e1000e_trace-6.4-ethercat.h \
+	e1000e_trace-6.4-orig.h \
 	es2lan-3.2-ethercat.c \
 	es2lan-3.2-orig.c \
-	ethtool-2.6.32-ethercat.c \
-	ethtool-2.6.32-orig.c \
-	ethtool-2.6.33-ethercat.c \
-	ethtool-2.6.33-orig.c \
-	ethtool-2.6.34-ethercat.c \
-	ethtool-2.6.34-orig.c \
-	ethtool-2.6.35-ethercat.c \
-	ethtool-2.6.35-orig.c \
-	ethtool-2.6.37-ethercat.c \
-	ethtool-2.6.37-orig.c \
 	ethtool-3.10-ethercat.c \
 	ethtool-3.10-orig.c \
 	ethtool-3.12-ethercat.c \
@@ -239,8 +210,6 @@ EXTRA_DIST = \
 	ethtool-3.14-orig.c \
 	ethtool-3.16-ethercat.c \
 	ethtool-3.16-orig.c \
-	ethtool-3.18-ethercat.c \
-	ethtool-3.18-orig.c \
 	ethtool-3.2-ethercat.c \
 	ethtool-3.2-orig.c \
 	ethtool-3.4-ethercat.c \
@@ -249,26 +218,22 @@ EXTRA_DIST = \
 	ethtool-3.6-orig.c \
 	ethtool-3.8-ethercat.c \
 	ethtool-3.8-orig.c \
-	ethtool-4.1-ethercat.c \
-	ethtool-4.1-orig.c \
 	ethtool-4.4-ethercat.c \
 	ethtool-4.4-orig.c \
-	ethtool-4.9-ethercat.c \
-	ethtool-4.9-orig.c \
-	ethtool-4.14-ethercat.c \
-	ethtool-4.14-orig.c \
-	ethtool-4.19-ethercat.c \
-	ethtool-4.19-orig.c \
-	hw-2.6.32-ethercat.h \
-	hw-2.6.32-orig.h \
-	hw-2.6.33-ethercat.h \
-	hw-2.6.33-orig.h \
-	hw-2.6.34-ethercat.h \
-	hw-2.6.34-orig.h \
-	hw-2.6.35-ethercat.h \
-	hw-2.6.35-orig.h \
-	hw-2.6.37-ethercat.h \
-	hw-2.6.37-orig.h \
+	ethtool-5.10-ethercat.c \
+	ethtool-5.10-orig.c \
+	ethtool-5.14-ethercat.c \
+	ethtool-5.14-orig.c \
+	ethtool-5.15-ethercat.c \
+	ethtool-5.15-orig.c \
+	ethtool-5.4-ethercat.c \
+	ethtool-5.4-orig.c \
+	ethtool-6.1-ethercat.c \
+	ethtool-6.1-orig.c \
+	ethtool-6.12-ethercat.c \
+	ethtool-6.12-orig.c \
+	ethtool-6.4-ethercat.c \
+	ethtool-6.4-orig.c \
 	hw-3.10-ethercat.h \
 	hw-3.10-orig.h \
 	hw-3.12-ethercat.h \
@@ -277,8 +242,6 @@ EXTRA_DIST = \
 	hw-3.14-orig.h \
 	hw-3.16-ethercat.h \
 	hw-3.16-orig.h \
-	hw-3.18-ethercat.h \
-	hw-3.18-orig.h \
 	hw-3.2-ethercat.h \
 	hw-3.2-orig.h \
 	hw-3.4-ethercat.h \
@@ -287,26 +250,22 @@ EXTRA_DIST = \
 	hw-3.6-orig.h \
 	hw-3.8-ethercat.h \
 	hw-3.8-orig.h \
-	hw-4.1-ethercat.h \
-	hw-4.1-orig.h \
 	hw-4.4-ethercat.h \
 	hw-4.4-orig.h \
-	hw-4.9-ethercat.h \
-	hw-4.9-orig.h \
-	hw-4.14-ethercat.h \
-	hw-4.14-orig.h \
-	hw-4.19-ethercat.h \
-	hw-4.19-orig.h \
-	ich8lan-2.6.32-ethercat.c \
-	ich8lan-2.6.32-orig.c \
-	ich8lan-2.6.33-ethercat.c \
-	ich8lan-2.6.33-orig.c \
-	ich8lan-2.6.34-ethercat.c \
-	ich8lan-2.6.34-orig.c \
-	ich8lan-2.6.35-ethercat.c \
-	ich8lan-2.6.35-orig.c \
-	ich8lan-2.6.37-ethercat.c \
-	ich8lan-2.6.37-orig.c \
+	hw-5.10-ethercat.h \
+	hw-5.10-orig.h \
+	hw-5.14-ethercat.h \
+	hw-5.14-orig.h \
+	hw-5.15-ethercat.h \
+	hw-5.15-orig.h \
+	hw-5.4-ethercat.h \
+	hw-5.4-orig.h \
+	hw-6.1-ethercat.h \
+	hw-6.1-orig.h \
+	hw-6.12-ethercat.h \
+	hw-6.12-orig.h \
+	hw-6.4-ethercat.h \
+	hw-6.4-orig.h \
 	ich8lan-3.10-ethercat.c \
 	ich8lan-3.10-ethercat.h \
 	ich8lan-3.10-orig.c \
@@ -323,10 +282,6 @@ EXTRA_DIST = \
 	ich8lan-3.16-ethercat.h \
 	ich8lan-3.16-orig.c \
 	ich8lan-3.16-orig.h \
-	ich8lan-3.18-ethercat.c \
-	ich8lan-3.18-ethercat.h \
-	ich8lan-3.18-orig.c \
-	ich8lan-3.18-orig.h \
 	ich8lan-3.2-ethercat.c \
 	ich8lan-3.2-orig.c \
 	ich8lan-3.4-ethercat.c \
@@ -335,36 +290,38 @@ EXTRA_DIST = \
 	ich8lan-3.6-orig.c \
 	ich8lan-3.8-ethercat.c \
 	ich8lan-3.8-orig.c \
-	ich8lan-4.1-ethercat.c \
-	ich8lan-4.1-ethercat.h \
-	ich8lan-4.1-orig.c \
-	ich8lan-4.1-orig.h \
 	ich8lan-4.4-ethercat.c \
 	ich8lan-4.4-ethercat.h \
 	ich8lan-4.4-orig.c \
 	ich8lan-4.4-orig.h \
-	ich8lan-4.9-ethercat.c \
-	ich8lan-4.9-ethercat.h \
-	ich8lan-4.9-orig.c \
-	ich8lan-4.9-orig.h \
-	ich8lan-4.14-ethercat.c \
-	ich8lan-4.14-ethercat.h \
-	ich8lan-4.14-orig.c \
-	ich8lan-4.14-orig.h \
-	ich8lan-4.19-ethercat.c \
-	ich8lan-4.19-ethercat.h \
-	ich8lan-4.19-orig.c \
-	ich8lan-4.19-orig.h \
-	lib-2.6.32-ethercat.c \
-	lib-2.6.32-orig.c \
-	lib-2.6.33-ethercat.c \
-	lib-2.6.33-orig.c \
-	lib-2.6.34-ethercat.c \
-	lib-2.6.34-orig.c \
-	lib-2.6.35-ethercat.c \
-	lib-2.6.35-orig.c \
-	lib-2.6.37-ethercat.c \
-	lib-2.6.37-orig.c \
+	ich8lan-5.10-ethercat.c \
+	ich8lan-5.10-ethercat.h \
+	ich8lan-5.10-orig.c \
+	ich8lan-5.10-orig.h \
+	ich8lan-5.14-ethercat.c \
+	ich8lan-5.14-ethercat.h \
+	ich8lan-5.14-orig.c \
+	ich8lan-5.14-orig.h \
+	ich8lan-5.15-ethercat.c \
+	ich8lan-5.15-ethercat.h \
+	ich8lan-5.15-orig.c \
+	ich8lan-5.15-orig.h \
+	ich8lan-5.4-ethercat.c \
+	ich8lan-5.4-ethercat.h \
+	ich8lan-5.4-orig.c \
+	ich8lan-5.4-orig.h \
+	ich8lan-6.1-ethercat.c \
+	ich8lan-6.1-ethercat.h \
+	ich8lan-6.1-orig.c \
+	ich8lan-6.1-orig.h \
+	ich8lan-6.12-ethercat.c \
+	ich8lan-6.12-ethercat.h \
+	ich8lan-6.12-orig.c \
+	ich8lan-6.12-orig.h \
+	ich8lan-6.4-ethercat.c \
+	ich8lan-6.4-ethercat.h \
+	ich8lan-6.4-orig.c \
+	ich8lan-6.4-orig.h \
 	lib-3.2-ethercat.c \
 	lib-3.2-orig.c \
 	mac-3.10-ethercat.c \
@@ -383,36 +340,44 @@ EXTRA_DIST = \
 	mac-3.16-ethercat.h \
 	mac-3.16-orig.c \
 	mac-3.16-orig.h \
-	mac-3.18-ethercat.c \
-	mac-3.18-ethercat.h \
-	mac-3.18-orig.c \
-	mac-3.18-orig.h \
 	mac-3.4-ethercat.c \
 	mac-3.4-orig.c \
 	mac-3.6-ethercat.c \
 	mac-3.6-orig.c \
 	mac-3.8-ethercat.c \
 	mac-3.8-orig.c \
-	mac-4.1-ethercat.c \
-	mac-4.1-ethercat.h \
-	mac-4.1-orig.c \
-	mac-4.1-orig.h \
 	mac-4.4-ethercat.c \
 	mac-4.4-ethercat.h \
 	mac-4.4-orig.c \
 	mac-4.4-orig.h \
-	mac-4.9-ethercat.c \
-	mac-4.9-ethercat.h \
-	mac-4.9-orig.c \
-	mac-4.9-orig.h \
-	mac-4.14-ethercat.c \
-	mac-4.14-ethercat.h \
-	mac-4.14-orig.c \
-	mac-4.14-orig.h \
-	mac-4.19-ethercat.c \
-	mac-4.19-ethercat.h \
-	mac-4.19-orig.c \
-	mac-4.19-orig.h \
+	mac-5.10-ethercat.c \
+	mac-5.10-ethercat.h \
+	mac-5.10-orig.c \
+	mac-5.10-orig.h \
+	mac-5.14-ethercat.c \
+	mac-5.14-ethercat.h \
+	mac-5.14-orig.c \
+	mac-5.14-orig.h \
+	mac-5.15-ethercat.c \
+	mac-5.15-ethercat.h \
+	mac-5.15-orig.c \
+	mac-5.15-orig.h \
+	mac-5.4-ethercat.c \
+	mac-5.4-ethercat.h \
+	mac-5.4-orig.c \
+	mac-5.4-orig.h \
+	mac-6.1-ethercat.c \
+	mac-6.1-ethercat.h \
+	mac-6.1-orig.c \
+	mac-6.1-orig.h \
+	mac-6.12-ethercat.c \
+	mac-6.12-ethercat.h \
+	mac-6.12-orig.c \
+	mac-6.12-orig.h \
+	mac-6.4-ethercat.c \
+	mac-6.4-ethercat.h \
+	mac-6.4-orig.c \
+	mac-6.4-orig.h \
 	manage-3.10-ethercat.c \
 	manage-3.10-ethercat.h \
 	manage-3.10-orig.c \
@@ -429,46 +394,44 @@ EXTRA_DIST = \
 	manage-3.16-ethercat.h \
 	manage-3.16-orig.c \
 	manage-3.16-orig.h \
-	manage-3.18-ethercat.c \
-	manage-3.18-ethercat.h \
-	manage-3.18-orig.c \
-	manage-3.18-orig.h \
 	manage-3.4-ethercat.c \
 	manage-3.4-orig.c \
 	manage-3.6-ethercat.c \
 	manage-3.6-orig.c \
 	manage-3.8-ethercat.c \
 	manage-3.8-orig.c \
-	manage-4.1-ethercat.c \
-	manage-4.1-ethercat.h \
-	manage-4.1-orig.c \
-	manage-4.1-orig.h \
 	manage-4.4-ethercat.c \
 	manage-4.4-ethercat.h \
 	manage-4.4-orig.c \
 	manage-4.4-orig.h \
-	manage-4.9-ethercat.c \
-	manage-4.9-ethercat.h \
-	manage-4.9-orig.c \
-	manage-4.9-orig.h \
-	manage-4.14-ethercat.c \
-	manage-4.14-ethercat.h \
-	manage-4.14-orig.c \
-	manage-4.14-orig.h \
-	manage-4.19-ethercat.c \
-	manage-4.19-ethercat.h \
-	manage-4.19-orig.c \
-	manage-4.19-orig.h \
-	netdev-2.6.32-ethercat.c \
-	netdev-2.6.32-orig.c \
-	netdev-2.6.33-ethercat.c \
-	netdev-2.6.33-orig.c \
-	netdev-2.6.34-ethercat.c \
-	netdev-2.6.34-orig.c \
-	netdev-2.6.35-ethercat.c \
-	netdev-2.6.35-orig.c \
-	netdev-2.6.37-ethercat.c \
-	netdev-2.6.37-orig.c \
+	manage-5.10-ethercat.c \
+	manage-5.10-ethercat.h \
+	manage-5.10-orig.c \
+	manage-5.10-orig.h \
+	manage-5.14-ethercat.c \
+	manage-5.14-ethercat.h \
+	manage-5.14-orig.c \
+	manage-5.14-orig.h \
+	manage-5.15-ethercat.c \
+	manage-5.15-ethercat.h \
+	manage-5.15-orig.c \
+	manage-5.15-orig.h \
+	manage-5.4-ethercat.c \
+	manage-5.4-ethercat.h \
+	manage-5.4-orig.c \
+	manage-5.4-orig.h \
+	manage-6.1-ethercat.c \
+	manage-6.1-ethercat.h \
+	manage-6.1-orig.c \
+	manage-6.1-orig.h \
+	manage-6.12-ethercat.c \
+	manage-6.12-ethercat.h \
+	manage-6.12-orig.c \
+	manage-6.12-orig.h \
+	manage-6.4-ethercat.c \
+	manage-6.4-ethercat.h \
+	manage-6.4-orig.c \
+	manage-6.4-orig.h \
 	netdev-3.10-ethercat.c \
 	netdev-3.10-orig.c \
 	netdev-3.12-ethercat.c \
@@ -477,8 +440,6 @@ EXTRA_DIST = \
 	netdev-3.14-orig.c \
 	netdev-3.16-ethercat.c \
 	netdev-3.16-orig.c \
-	netdev-3.18-ethercat.c \
-	netdev-3.18-orig.c \
 	netdev-3.2-ethercat.c \
 	netdev-3.2-orig.c \
 	netdev-3.4-ethercat.c \
@@ -487,16 +448,22 @@ EXTRA_DIST = \
 	netdev-3.6-orig.c \
 	netdev-3.8-ethercat.c \
 	netdev-3.8-orig.c \
-	netdev-4.1-ethercat.c \
-	netdev-4.1-orig.c \
 	netdev-4.4-ethercat.c \
 	netdev-4.4-orig.c \
-	netdev-4.9-ethercat.c \
-	netdev-4.9-orig.c \
-	netdev-4.14-ethercat.c \
-	netdev-4.14-orig.c \
-	netdev-4.19-ethercat.c \
-	netdev-4.19-orig.c \
+	netdev-5.10-ethercat.c \
+	netdev-5.10-orig.c \
+	netdev-5.14-ethercat.c \
+	netdev-5.14-orig.c \
+	netdev-5.15-ethercat.c \
+	netdev-5.15-orig.c \
+	netdev-5.4-ethercat.c \
+	netdev-5.4-orig.c \
+	netdev-6.1-ethercat.c \
+	netdev-6.1-orig.c \
+	netdev-6.12-ethercat.c \
+	netdev-6.12-orig.c \
+	netdev-6.4-ethercat.c \
+	netdev-6.4-orig.c \
 	nvm-3.10-ethercat.c \
 	nvm-3.10-ethercat.h \
 	nvm-3.10-orig.c \
@@ -513,46 +480,44 @@ EXTRA_DIST = \
 	nvm-3.16-ethercat.h \
 	nvm-3.16-orig.c \
 	nvm-3.16-orig.h \
-	nvm-3.18-ethercat.c \
-	nvm-3.18-ethercat.h \
-	nvm-3.18-orig.c \
-	nvm-3.18-orig.h \
 	nvm-3.4-ethercat.c \
 	nvm-3.4-orig.c \
 	nvm-3.6-ethercat.c \
 	nvm-3.6-orig.c \
 	nvm-3.8-ethercat.c \
-	nvm-3.8-orig.c \ \
-	nvm-4.1-ethercat.c \
-	nvm-4.1-ethercat.h \
-	nvm-4.1-orig.c \
-	nvm-4.1-orig.h \
+	nvm-3.8-orig.c \
 	nvm-4.4-ethercat.c \
 	nvm-4.4-ethercat.h \
 	nvm-4.4-orig.c \
 	nvm-4.4-orig.h \
-	nvm-4.9-ethercat.c \
-	nvm-4.9-ethercat.h \
-	nvm-4.9-orig.c \
-	nvm-4.9-orig.h \
-	nvm-4.14-ethercat.c \
-	nvm-4.14-ethercat.h \
-	nvm-4.14-orig.c \
-	nvm-4.14-orig.h \
-	nvm-4.19-ethercat.c \
-	nvm-4.19-ethercat.h \
-	nvm-4.19-orig.c \
-	nvm-4.19-orig.h \
-	param-2.6.32-ethercat.c \
-	param-2.6.32-orig.c \
-	param-2.6.33-ethercat.c \
-	param-2.6.33-orig.c \
-	param-2.6.34-ethercat.c \
-	param-2.6.34-orig.c \
-	param-2.6.35-ethercat.c \
-	param-2.6.35-orig.c \
-	param-2.6.37-ethercat.c \
-	param-2.6.37-orig.c \
+	nvm-5.10-ethercat.c \
+	nvm-5.10-ethercat.h \
+	nvm-5.10-orig.c \
+	nvm-5.10-orig.h \
+	nvm-5.14-ethercat.c \
+	nvm-5.14-ethercat.h \
+	nvm-5.14-orig.c \
+	nvm-5.14-orig.h \
+	nvm-5.15-ethercat.c \
+	nvm-5.15-ethercat.h \
+	nvm-5.15-orig.c \
+	nvm-5.15-orig.h \
+	nvm-5.4-ethercat.c \
+	nvm-5.4-ethercat.h \
+	nvm-5.4-orig.c \
+	nvm-5.4-orig.h \
+	nvm-6.1-ethercat.c \
+	nvm-6.1-ethercat.h \
+	nvm-6.1-orig.c \
+	nvm-6.1-orig.h \
+	nvm-6.12-ethercat.c \
+	nvm-6.12-ethercat.h \
+	nvm-6.12-orig.c \
+	nvm-6.12-orig.h \
+	nvm-6.4-ethercat.c \
+	nvm-6.4-ethercat.h \
+	nvm-6.4-orig.c \
+	nvm-6.4-orig.h \
 	param-3.10-ethercat.c \
 	param-3.10-orig.c \
 	param-3.12-ethercat.c \
@@ -561,8 +526,6 @@ EXTRA_DIST = \
 	param-3.14-orig.c \
 	param-3.16-ethercat.c \
 	param-3.16-orig.c \
-	param-3.18-ethercat.c \
-	param-3.18-orig.c \
 	param-3.2-ethercat.c \
 	param-3.2-orig.c \
 	param-3.4-ethercat.c \
@@ -571,26 +534,22 @@ EXTRA_DIST = \
 	param-3.6-orig.c \
 	param-3.8-ethercat.c \
 	param-3.8-orig.c \
-	param-4.1-ethercat.c \
-	param-4.1-orig.c \
 	param-4.4-ethercat.c \
 	param-4.4-orig.c \
-	param-4.9-ethercat.c \
-	param-4.9-orig.c \
-	param-4.14-ethercat.c \
-	param-4.14-orig.c \
-	param-4.19-ethercat.c \
-	param-4.19-orig.c \
-	phy-2.6.32-ethercat.c \
-	phy-2.6.32-orig.c \
-	phy-2.6.33-ethercat.c \
-	phy-2.6.33-orig.c \
-	phy-2.6.34-ethercat.c \
-	phy-2.6.34-orig.c \
-	phy-2.6.35-ethercat.c \
-	phy-2.6.35-orig.c \
-	phy-2.6.37-ethercat.c \
-	phy-2.6.37-orig.c \
+	param-5.10-ethercat.c \
+	param-5.10-orig.c \
+	param-5.14-ethercat.c \
+	param-5.14-orig.c \
+	param-5.15-ethercat.c \
+	param-5.15-orig.c \
+	param-5.4-ethercat.c \
+	param-5.4-orig.c \
+	param-6.1-ethercat.c \
+	param-6.1-orig.c \
+	param-6.12-ethercat.c \
+	param-6.12-orig.c \
+	param-6.4-ethercat.c \
+	param-6.4-orig.c \
 	phy-3.10-ethercat.c \
 	phy-3.10-ethercat.h \
 	phy-3.10-orig.c \
@@ -607,38 +566,46 @@ EXTRA_DIST = \
 	phy-3.16-ethercat.h \
 	phy-3.16-orig.c \
 	phy-3.16-orig.h \
-	phy-3.18-ethercat.c \
-	phy-3.18-ethercat.h \
-	phy-3.18-orig.c \
-	phy-3.18-orig.h \
 	phy-3.2-ethercat.c \
 	phy-3.2-orig.c \
 	phy-3.4-ethercat.c \
-	phy-3.4-orig.c
+	phy-3.4-orig.c \
 	phy-3.6-ethercat.c \
 	phy-3.6-orig.c \
 	phy-3.8-ethercat.c \
 	phy-3.8-orig.c \
-	phy-4.1-ethercat.c \
-	phy-4.1-ethercat.h \
-	phy-4.1-orig.c \
-	phy-4.1-orig.h \
 	phy-4.4-ethercat.c \
 	phy-4.4-ethercat.h \
 	phy-4.4-orig.c \
 	phy-4.4-orig.h \
-	phy-4.9-ethercat.c \
-	phy-4.9-ethercat.h \
-	phy-4.9-orig.c \
-	phy-4.9-orig.h \
-	phy-4.14-ethercat.c \
-	phy-4.14-ethercat.h \
-	phy-4.14-orig.c \
-	phy-4.14-orig.h \
-	phy-4.19-ethercat.c \
-	phy-4.19-ethercat.h \
-	phy-4.19-orig.c \
-	phy-4.19-orig.h \
+	phy-5.10-ethercat.c \
+	phy-5.10-ethercat.h \
+	phy-5.10-orig.c \
+	phy-5.10-orig.h \
+	phy-5.14-ethercat.c \
+	phy-5.14-ethercat.h \
+	phy-5.14-orig.c \
+	phy-5.14-orig.h \
+	phy-5.15-ethercat.c \
+	phy-5.15-ethercat.h \
+	phy-5.15-orig.c \
+	phy-5.15-orig.h \
+	phy-5.4-ethercat.c \
+	phy-5.4-ethercat.h \
+	phy-5.4-orig.c \
+	phy-5.4-orig.h \
+	phy-6.1-ethercat.c \
+	phy-6.1-ethercat.h \
+	phy-6.1-orig.c \
+	phy-6.1-orig.h \
+	phy-6.12-ethercat.c \
+	phy-6.12-ethercat.h \
+	phy-6.12-orig.c \
+	phy-6.12-orig.h \
+	phy-6.4-ethercat.c \
+	phy-6.4-ethercat.h \
+	phy-6.4-orig.c \
+	phy-6.4-orig.h \
 	ptp-3.10-ethercat.c \
 	ptp-3.10-orig.c \
 	ptp-3.12-ethercat.c \
@@ -647,18 +614,22 @@ EXTRA_DIST = \
 	ptp-3.14-orig.c \
 	ptp-3.16-ethercat.c \
 	ptp-3.16-orig.c \
-	ptp-3.18-ethercat.c \
-	ptp-3.18-orig.c \
-	ptp-4.1-ethercat.c \
-	ptp-4.1-orig.c \
 	ptp-4.4-ethercat.c \
 	ptp-4.4-orig.c \
-	ptp-4.9-ethercat.c \
-	ptp-4.9-orig.c \
-	ptp-4.14-ethercat.c \
-	ptp-4.14-orig.c \
-	ptp-4.19-ethercat.c \
-	ptp-4.19-orig.c \
+	ptp-5.10-ethercat.c \
+	ptp-5.10-orig.c \
+	ptp-5.14-ethercat.c \
+	ptp-5.14-orig.c \
+	ptp-5.15-ethercat.c \
+	ptp-5.15-orig.c \
+	ptp-5.4-ethercat.c \
+	ptp-5.4-orig.c \
+	ptp-6.1-ethercat.c \
+	ptp-6.1-orig.c \
+	ptp-6.12-ethercat.c \
+	ptp-6.12-orig.c \
+	ptp-6.4-ethercat.c \
+	ptp-6.4-orig.c \
 	regs-3.10-ethercat.h \
 	regs-3.10-orig.h \
 	regs-3.12-ethercat.h \
@@ -667,31 +638,22 @@ EXTRA_DIST = \
 	regs-3.14-orig.h \
 	regs-3.16-ethercat.h \
 	regs-3.16-orig.h \
-	regs-3.18-ethercat.h \
-	regs-3.18-orig.h \
-	regs-4.1-ethercat.h \
-	regs-4.1-orig.h \
 	regs-4.4-ethercat.h \
 	regs-4.4-orig.h \
-	regs-4.9-ethercat.h \
-	regs-4.9-orig.h \
-	regs-4.14-ethercat.h \
-	regs-4.14-orig.h \
-	regs-4.19-ethercat.h \
-	regs-4.19-orig.h \
+	regs-5.10-ethercat.h \
+	regs-5.10-orig.h \
+	regs-5.14-ethercat.h \
+	regs-5.14-orig.h \
+	regs-5.15-ethercat.h \
+	regs-5.15-orig.h \
+	regs-5.4-ethercat.h \
+	regs-5.4-orig.h \
+	regs-6.1-ethercat.h \
+	regs-6.1-orig.h \
+	regs-6.12-ethercat.h \
+	regs-6.12-orig.h \
+	regs-6.4-ethercat.h \
+	regs-6.4-orig.h \
 	update.sh
 
-BUILT_SOURCES = \
-	Kbuild
-
-modules:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="@abs_srcdir@" modules
-
-modules_install:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="@abs_srcdir@" \
-		INSTALL_MOD_DIR="$(INSTALL_MOD_DIR)" modules_install
-
-clean-local:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="@abs_srcdir@" clean
-
-#------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------

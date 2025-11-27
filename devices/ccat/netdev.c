@@ -1,21 +1,8 @@
+// SPDX-License-Identifier: MIT
 /**
     Network Driver for Beckhoff CCAT communication controller
-    Copyright (C) 2014 - 2015  Beckhoff Automation GmbH
+    Copyright (C) 2014 - 2018 Beckhoff Automation GmbH & Co. KG
     Author: Patrick Bruenn <p.bruenn@beckhoff.com>
-
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License along
-    with this program; if not, write to the Free Software Foundation, Inc.,
-    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
 #include <linux/etherdevice.h>
@@ -24,27 +11,12 @@
 #include <linux/netdevice.h>
 #include <linux/version.h>
 
-#ifdef CONFIG_PCI
-#include <asm/dma.h>
-#else
-#define free_dma(X)
-#define request_dma(X, Y) ((int)(-EINVAL))
-#endif
-
 #include "module.h"
 
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
 MODULE_AUTHOR("Patrick Bruenn <p.bruenn@beckhoff.com>");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL and additional rights");
 MODULE_VERSION(DRV_VERSION);
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-#define REMOVE_RESULT int
-#define REMOVE_OK 0
-#else
-#define REMOVE_RESULT void
-#define REMOVE_OK
-#endif
 
 /**
  * EtherCAT frame to enable forwarding on EtherCAT Terminals
@@ -66,7 +38,6 @@ static const u8 frameForwardEthernetFrames[] = {
 #define FIFO_LENGTH 64
 #define POLL_TIME ktime_set(0, 50 * NSEC_PER_USEC)
 #define CCAT_ALIGNMENT ((size_t)(128 * 1024))
-#define CCAT_ALIGN_CHANNEL(x, c) ((typeof(x))(ALIGN((size_t)((x) + ((c) * CCAT_ALIGNMENT)), CCAT_ALIGNMENT)))
 
 struct ccat_dma_frame_hdr {
 	__le32 reserved1;
@@ -125,14 +96,12 @@ struct ccat_eth_register {
  * struct ccat_dma_mem - CCAT DMA channel configuration
  * @size: number of bytes in the associated DMA memory
  * @phys: device-viewed address(physical) of the associated DMA memory
- * @channel: CCAT DMA channel number
  * @dev: valid struct device pointer
  * @base: CPU-viewed address(virtual) of the associated DMA memory
  */
 struct ccat_dma_mem {
 	size_t size;
 	dma_addr_t phys;
-	size_t channel;
 	struct device *dev;
 	void *base;
 };
@@ -171,6 +140,7 @@ struct ccat_eth_fifo {
 	void __iomem *reg;
 	atomic64_t bytes;
 	atomic64_t dropped;
+	struct ccat_dma_mem dma_mem;
 	union {
 		struct ccat_mem mem;
 		struct ccat_dma dma;
@@ -225,15 +195,6 @@ struct ccat_eth_priv {
 	struct ccat_eth_fifo tx_fifo;
 	struct hrtimer poll_timer;
 	struct ccat_dma_mem dma_mem;
-	ec_device_t *ecdev;
-	void (*carrier_off) (struct net_device * netdev);
-	 bool(*carrier_ok) (const struct net_device * netdev);
-	void (*carrier_on) (struct net_device * netdev);
-	void (*kfree_skb_any) (struct sk_buff * skb);
-	void (*receive) (struct ccat_eth_priv *, size_t);
-	void (*start_queue) (struct net_device * netdev);
-	void (*stop_queue) (struct net_device * netdev);
-	void (*unregister) (struct net_device * netdev);
 };
 
 struct ccat_mac_register {
@@ -269,15 +230,13 @@ static void fifo_set_end(struct ccat_eth_fifo *const fifo, size_t size)
 	ccat_eth_fifo_reset(fifo);
 }
 
-static void ccat_dma_free(struct ccat_eth_priv *const priv)
+static void ccat_dma_free(struct ccat_dma_mem *const dma_mem)
 {
-	if (priv->dma_mem.base) {
-		const struct ccat_dma_mem tmp = priv->dma_mem;
+	if (dma_mem->base) {
+		const struct ccat_dma_mem tmp = *dma_mem;
 
-		memset(&priv->dma_mem, 0, sizeof(priv->dma_mem));
+		memset(dma_mem, 0, sizeof(*dma_mem));
 		dma_free_coherent(tmp.dev, tmp.size, tmp.base, tmp.phys);
-		free_dma(priv->func->info.tx_dma_chan);
-		free_dma(priv->func->info.rx_dma_chan);
 	}
 }
 
@@ -288,76 +247,37 @@ static void ccat_dma_free(struct ccat_eth_priv *const priv)
  * @ioaddr of the pci bar2 configspace used to calculate the address of the pci dma configuration
  * @dev which should be configured for DMA
  */
-static int ccat_dma_init(struct ccat_dma_mem *const dma, size_t channel,
+static int ccat_dma_init(struct pci_dev *const pdev, size_t channel,
 			 void __iomem * const bar2,
 			 struct ccat_eth_fifo *const fifo)
 {
+	struct ccat_dma_mem *const dma = &fifo->dma_mem;
+	dma->dev = &pdev->dev;
+	dma->size = 2 * CCAT_ALIGNMENT - 1;
+	dma->base =
+	    dma_alloc_coherent(dma->dev, dma->size, &dma->phys, GFP_KERNEL);
+	if (!dma->base || !dma->phys) {
+		pr_err("init DMA memory failed.\n");
+		return -ENOMEM;
+	}
+
 	void __iomem *const ioaddr = bar2 + 0x1000 + (sizeof(u64) * channel);
-	const dma_addr_t phys = CCAT_ALIGN_CHANNEL(dma->phys, channel);
+	const dma_addr_t phys = PTR_ALIGN(dma->phys, CCAT_ALIGNMENT);
 	const u32 phys_hi = (sizeof(phys) > sizeof(u32)) ? phys >> 32 : 0;
-	fifo->dma.start = CCAT_ALIGN_CHANNEL(dma->base, channel);
+	fifo->dma.start = dma->base + (phys - dma->phys);
 
 	fifo_set_end(fifo, CCAT_ALIGNMENT);
-	if (request_dma(channel, KBUILD_MODNAME)) {
-		pr_info("request dma channel %llu failed\n", (u64) channel);
-		return -EINVAL;
-	}
 
 	/** bit 0 enables 64 bit mode on ccat */
 	iowrite32((u32) phys | ((phys_hi) > 0), ioaddr);
 	iowrite32(phys_hi, ioaddr + 4);
 
 	pr_info
-	    ("DMA%llu mem initialized\n base:         0x%p\n start:        0x%p\n phys:         0x%09llx\n pci addr:     0x%01x%08x\n size:         %llu |%llx bytes.\n",
-	     (u64) channel, dma->base, fifo->dma.start, (u64) dma->phys,
+	    ("DMA%zu mem initialized base: 0x%p start: 0x%p phys: 0x%llx pci addr: 0x%x%08x\n size: 0x%llx bytes.\n",
+	     channel, dma->base, fifo->dma.start, (u64) dma->phys,
 	     ioread32(ioaddr + 4), ioread32(ioaddr),
-	     (u64) dma->size, (u64) dma->size);
+	     (u64) dma->size);
 	return 0;
-}
-
-static void ecdev_kfree_skb_any(struct sk_buff *skb)
-{
-	/* never release a skb in EtherCAT mode */
-}
-
-static bool ecdev_carrier_ok(const struct net_device *const netdev)
-{
-	struct ccat_eth_priv *const priv = netdev_priv(netdev);
-	return ecdev_get_link(priv->ecdev);
-}
-
-static void ecdev_carrier_on(struct net_device *const netdev)
-{
-	struct ccat_eth_priv *const priv = netdev_priv(netdev);
-	ecdev_set_link(priv->ecdev, 1);
-}
-
-static void ecdev_carrier_off(struct net_device *const netdev)
-{
-	struct ccat_eth_priv *const priv = netdev_priv(netdev);
-	ecdev_set_link(priv->ecdev, 0);
-}
-
-static void ecdev_nop(struct net_device *const netdev)
-{
-	/* dummy called if nothing has to be done in EtherCAT operation mode */
-}
-
-static void ecdev_receive_dma(struct ccat_eth_priv *const priv, size_t len)
-{
-	ecdev_receive(priv->ecdev, priv->rx_fifo.dma.next->data, len);
-}
-
-static void ecdev_receive_eim(struct ccat_eth_priv *const priv, size_t len)
-{
-	ecdev_receive(priv->ecdev, priv->rx_fifo.eim.next->data, len);
-}
-
-static void unregister_ecdev(struct net_device *const netdev)
-{
-	struct ccat_eth_priv *const priv = netdev_priv(netdev);
-	ecdev_close(priv->ecdev);
-	ecdev_withdraw(priv->ecdev);
 }
 
 static inline size_t fifo_eim_tx_ready(struct ccat_eth_fifo *const fifo)
@@ -529,7 +449,8 @@ static void ccat_eth_priv_free(struct ccat_eth_priv *priv)
 	ccat_eth_fifo_hw_reset(&priv->tx_fifo);
 
 	/* release dma */
-	ccat_dma_free(priv);
+	ccat_dma_free(&priv->rx_fifo.dma_mem);
+	ccat_dma_free(&priv->tx_fifo.dma_mem);
 }
 
 static int ccat_hw_disable_mac_filter(struct ccat_eth_priv *priv)
@@ -544,40 +465,24 @@ static int ccat_hw_disable_mac_filter(struct ccat_eth_priv *priv)
  */
 static int ccat_eth_priv_init_dma(struct ccat_eth_priv *priv)
 {
-	struct ccat_dma_mem *const dma = &priv->dma_mem;
 	struct pci_dev *const pdev = priv->func->ccat->pdev;
 	void __iomem *const bar_2 = priv->func->ccat->bar_2;
 	const u8 rx_chan = priv->func->info.rx_dma_chan;
 	const u8 tx_chan = priv->func->info.tx_dma_chan;
 	int status = 0;
 
-	dma->dev = &pdev->dev;
-	dma->size = CCAT_ALIGNMENT * 3;
-	dma->base =
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
-        /* since kernel 5 memory is zero'd implicitly */
-	    dma_alloc_coherent(dma->dev, dma->size, &dma->phys, GFP_KERNEL);
-#else
-	    dma_zalloc_coherent(dma->dev, dma->size, &dma->phys, GFP_KERNEL);
-#endif
-	if (!dma->base || !dma->phys) {
-		pr_err("init DMA memory failed.\n");
-		return -ENOMEM;
-	}
-
 	priv->rx_fifo.ops = &dma_rx_fifo_ops;
-	status = ccat_dma_init(dma, rx_chan, bar_2, &priv->rx_fifo);
+	status = ccat_dma_init(pdev, rx_chan, bar_2, &priv->rx_fifo);
 	if (status) {
 		pr_info("init RX DMA memory failed.\n");
-		ccat_dma_free(priv);
 		return status;
 	}
 
 	priv->tx_fifo.ops = &dma_tx_fifo_ops;
-	status = ccat_dma_init(dma, tx_chan, bar_2, &priv->tx_fifo);
+	status = ccat_dma_init(pdev, tx_chan, bar_2, &priv->tx_fifo);
 	if (status) {
 		pr_info("init TX DMA memory failed.\n");
-		ccat_dma_free(priv);
+		ccat_dma_free(&priv->rx_fifo.dma_mem);
 		return status;
 	}
 
@@ -639,7 +544,7 @@ static netdev_tx_t ccat_eth_start_xmit(struct sk_buff *skb,
 	if (skb_is_nonlinear(skb)) {
 		pr_warn("Non linear skb not supported -> drop frame.\n");
 		atomic64_inc(&fifo->dropped);
-		priv->kfree_skb_any(skb);
+		dev_kfree_skb_any(skb);
 		return NETDEV_TX_OK;
 	}
 
@@ -647,13 +552,13 @@ static netdev_tx_t ccat_eth_start_xmit(struct sk_buff *skb,
 		pr_warn("skb.len %llu exceeds dma buffer %llu -> drop frame.\n",
 			(u64) skb->len, (u64) MAX_PAYLOAD_SIZE);
 		atomic64_inc(&fifo->dropped);
-		priv->kfree_skb_any(skb);
+		dev_kfree_skb_any(skb);
 		return NETDEV_TX_OK;
 	}
 
 	if (!fifo->ops->ready(fifo)) {
 		netdev_err(dev, "BUG! Tx Ring full when queue awake!\n");
-		priv->stop_queue(priv->netdev);
+		netif_stop_queue(priv->netdev);
 		return NETDEV_TX_BUSY;
 	}
 
@@ -663,12 +568,12 @@ static netdev_tx_t ccat_eth_start_xmit(struct sk_buff *skb,
 	/* update stats */
 	atomic64_add(skb->len, &fifo->bytes);
 
-	priv->kfree_skb_any(skb);
+	dev_kfree_skb_any(skb);
 
 	ccat_eth_fifo_inc(fifo);
 	/* stop queue if tx ring is full */
 	if (!fifo->ops->ready(fifo)) {
-		priv->stop_queue(priv->netdev);
+		netif_stop_queue(priv->netdev);
 	}
 	return NETDEV_TX_OK;
 }
@@ -713,10 +618,8 @@ static void ccat_eth_receive(struct ccat_eth_priv *const priv, const size_t len)
 
 static void ccat_eth_link_down(struct net_device *const dev)
 {
-	struct ccat_eth_priv *const priv = netdev_priv(dev);
-
-	priv->stop_queue(dev);
-	priv->carrier_off(dev);
+	netif_stop_queue(dev);
+	netif_carrier_off(dev);
 	netdev_info(dev, "NIC Link is Down\n");
 }
 
@@ -736,8 +639,8 @@ static void ccat_eth_link_up(struct net_device *const dev)
 
 	ccat_eth_xmit_raw(dev, frameForwardEthernetFrames,
 			  sizeof(frameForwardEthernetFrames));
-	priv->carrier_on(dev);
-	priv->start_queue(dev);
+	netif_carrier_on(dev);
+	netif_start_queue(dev);
 }
 
 /**
@@ -757,7 +660,7 @@ static void poll_link(struct ccat_eth_priv *const priv)
 {
 	const size_t link = ccat_eth_priv_read_link_state(priv);
 
-	if (link != priv->carrier_ok(priv->netdev)) {
+	if (link != netif_carrier_ok(priv->netdev)) {
 		if (link)
 			ccat_eth_link_up(priv->netdev);
 		else
@@ -775,18 +678,11 @@ static void poll_rx(struct ccat_eth_priv *const priv)
 	size_t len = fifo->ops->ready(fifo);
 
 	while (len && --rx_per_poll) {
-		priv->receive(priv, len);
+		ccat_eth_receive(priv, len);
 		fifo->ops->add(fifo);
 		ccat_eth_fifo_inc(fifo);
 		len = fifo->ops->ready(fifo);
 	}
-}
-
-static void ec_poll(struct net_device *dev)
-{
-	struct ccat_eth_priv *const priv = netdev_priv(dev);
-	poll_link(priv);
-	poll_rx(priv);
 }
 
 /**
@@ -861,15 +757,20 @@ static void ccat_eth_get_stats64(struct net_device *dev,
 #endif
 }
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6,13,0))
+static void hrtimer_setup(struct hrtimer *timer, enum hrtimer_restart (*function)(struct hrtimer *), clockid_t clock_id, enum hrtimer_mode mode)
+{
+	hrtimer_init(timer, clock_id, mode);
+	timer->function = function;
+}
+#endif
+
 static int ccat_eth_open(struct net_device *dev)
 {
 	struct ccat_eth_priv *const priv = netdev_priv(dev);
 
-	if (!priv->ecdev) {
-		hrtimer_init(&priv->poll_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-		priv->poll_timer.function = poll_timer_callback;
-		hrtimer_start(&priv->poll_timer, POLL_TIME, HRTIMER_MODE_REL);
-	}
+	hrtimer_setup(&priv->poll_timer, poll_timer_callback, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	hrtimer_start(&priv->poll_timer, POLL_TIME, HRTIMER_MODE_REL);
 	return 0;
 }
 
@@ -877,10 +778,8 @@ static int ccat_eth_stop(struct net_device *dev)
 {
 	struct ccat_eth_priv *const priv = netdev_priv(dev);
 
-	priv->stop_queue(dev);
-	if (!priv->ecdev) {
-		hrtimer_cancel(&priv->poll_timer);
-	}
+	netif_stop_queue(dev);
+	hrtimer_cancel(&priv->poll_timer);
 	return 0;
 }
 
@@ -906,67 +805,29 @@ static struct ccat_eth_priv *ccat_eth_alloc_netdev(struct ccat_function *func)
 	return priv;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
+static inline void eth_hw_addr_set(struct net_device *dev, const u8 *addr)
+{
+	memcpy(dev->dev_addr, addr, dev->addr_len);
+}
+#endif
+
 static int ccat_eth_init_netdev(struct ccat_eth_priv *priv)
 {
 	int status;
 
-	/* init netdev with MAC and stack callbacks */
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
+	/* read MAC from hardware and validate */
 	u8 mac_addr[ETH_ALEN];
+	memcpy_fromio(mac_addr, priv->reg.mii + 8, sizeof(mac_addr));
+	if (!is_valid_ether_addr(mac_addr)) {
+		pr_err("Invalid MAC address: %pM.\n", mac_addr);
+		return -EADDRNOTAVAIL;
+	}
 
-	if (priv->netdev->addr_len != ETH_ALEN)
-		return -EFAULT;
-	memcpy_fromio(mac_addr, priv->reg.mii + 8, ETH_ALEN);
+	/* init netdev with MAC and stack callbacks */
 	eth_hw_addr_set(priv->netdev, mac_addr);
-#else
-	memcpy_fromio(priv->netdev->dev_addr, priv->reg.mii + 8,
-		      priv->netdev->addr_len);
-#endif
 	priv->netdev->netdev_ops = &ccat_eth_netdev_ops;
-
-	/* use as EtherCAT device? */
-	priv->carrier_off = ecdev_carrier_off;
-	priv->carrier_ok = ecdev_carrier_ok;
-	priv->carrier_on = ecdev_carrier_on;
-	priv->kfree_skb_any = ecdev_kfree_skb_any;
-
-	/* It would be more intuitive to check for:
-	 * if (priv->func->drv->type == CCATINFO_ETHERCAT_MASTER_DMA) {
-	 * unfortunately priv->func->drv is not initialized until probe() returns.
-	 * So we check if there is a rx dma fifo registered to determine dma/io mode */
-	if (&dma_rx_fifo_ops == priv->rx_fifo.ops) {
-		priv->receive = ecdev_receive_dma;
-	} else {
-		priv->receive = ecdev_receive_eim;
-	}
-	priv->start_queue = ecdev_nop;
-	priv->stop_queue = ecdev_nop;
-	priv->unregister = unregister_ecdev;
-	priv->ecdev = ecdev_offer(priv->netdev, ec_poll, THIS_MODULE);
-	if (priv->ecdev) {
-		priv->carrier_off(priv->netdev);
-		if (ecdev_open(priv->ecdev)) {
-			pr_info("unable to register network device.\n");
-			ecdev_withdraw(priv->ecdev);
-			ccat_eth_priv_free(priv);
-			free_netdev(priv->netdev);
-			return -1;	// TODO return better error code
-		}
-		priv->func->private_data = priv;
-		return 0;
-	}
-
-	/* EtherCAT disabled -> prepare normal ethernet mode */
-	priv->carrier_off = netif_carrier_off;
-	priv->carrier_ok = netif_carrier_ok;
-	priv->carrier_on = netif_carrier_on;
-	priv->kfree_skb_any = dev_kfree_skb_any;
-	priv->receive = ccat_eth_receive;
-	priv->start_queue = netif_start_queue;
-	priv->stop_queue = netif_stop_queue;
-	priv->unregister = unregister_netdev;
-	priv->carrier_off(priv->netdev);
+	netif_carrier_off(priv->netdev);
 
 	status = register_netdev(priv->netdev);
 	if (status) {
@@ -1002,7 +863,7 @@ static REMOVE_RESULT ccat_eth_dma_remove(struct platform_device *pdev)
 {
 	struct ccat_function *const func = pdev->dev.platform_data;
 	struct ccat_eth_priv *const eth = func->private_data;
-	eth->unregister(eth->netdev);
+	unregister_netdev(eth->netdev);
 	ccat_eth_priv_free(eth);
 	free_netdev(eth->netdev);
 	return REMOVE_OK;
@@ -1036,7 +897,7 @@ static REMOVE_RESULT ccat_eth_eim_remove(struct platform_device *pdev)
 {
 	struct ccat_function *const func = pdev->dev.platform_data;
 	struct ccat_eth_priv *const eth = func->private_data;
-	eth->unregister(eth->netdev);
+	unregister_netdev(eth->netdev);
 	ccat_eth_priv_free(eth);
 	free_netdev(eth->netdev);
 	return REMOVE_OK;
