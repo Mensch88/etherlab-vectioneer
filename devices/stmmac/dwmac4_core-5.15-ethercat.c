@@ -15,10 +15,10 @@
 #include <linux/ethtool.h>
 #include <linux/io.h>
 #include <net/dsa.h>
-#include "stmmac.h"
-#include "stmmac_pcs.h"
-#include "dwmac4.h"
-#include "dwmac5.h"
+#include "stmmac-5.15-ethercat.h"
+#include "stmmac_pcs-5.15-ethercat.h"
+#include "dwmac4-5.15-ethercat.h"
+#include "dwmac5-5.15-ethercat.h"
 
 static void dwmac4_core_init(struct mac_device_info *hw,
 			     struct net_device *dev)

@@ -2446,7 +2446,7 @@ static bool stmmac_xdp_xmit_zc(struct stmmac_priv *priv, u32 queue, u32 budget)
 	bool work_done = true;
 
 	/* Avoids TX time-out as we are sharing with slow path */
-	nq->trans_start = jiffies;
+	ec_txq_trans_cond_update(nq);
 
 	budget = min(budget, stmmac_tx_avail(priv, queue));
 
@@ -2702,12 +2702,13 @@ static int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
 	}
 
 	/* We still have pending packets, let's call for a new scheduling */
-	if (tx_q->dirty_tx != tx_q->cur_tx)
+	if (!get_ecdev(priv) && tx_q->dirty_tx != tx_q->cur_tx)
 		hrtimer_start(&tx_q->txtimer,
 			      STMMAC_COAL_TIMER(priv->tx_coal_timer[queue]),
 			      HRTIMER_MODE_REL);
 
-	__netif_tx_unlock_bh(netdev_get_tx_queue(priv->dev, queue));
+	if (!get_ecdev(priv))
+		__netif_tx_unlock_bh(netdev_get_tx_queue(priv->dev, queue));
 
 	/* Combine decisions from TX clean and XSK TX */
 	return max(count, xmits);
@@ -3891,16 +3892,24 @@ static int stmmac_release(struct net_device *dev)
 
 	netif_tx_disable(dev);
 
+	if (get_ecdev(priv)) {
+		rtnl_lock();
+	}
 	if (device_may_wakeup(priv->device))
 		phylink_speed_down(priv->phylink, false);
 	/* Stop and disconnect the PHY */
 	phylink_stop(priv->phylink);
 	phylink_disconnect_phy(priv->phylink);
+	if (get_ecdev(priv)) {
+		rtnl_unlock();
+	}
 
 	stmmac_disable_all_queues(priv);
 
-	for (chan = 0; chan < priv->plat->tx_queues_to_use; chan++)
-		hrtimer_cancel(&priv->tx_queue[chan].txtimer);
+	if (!get_ecdev(priv)) {
+		for (chan = 0; chan < priv->plat->tx_queues_to_use; chan++)
+			hrtimer_cancel(&priv->tx_queue[chan].txtimer);
+	}
 
 	/* Free the IRQ lines */
 	stmmac_free_irq(dev, REQ_IRQ_ERR_ALL, 0);
@@ -4784,7 +4793,7 @@ static int stmmac_xdp_xmit_back(struct stmmac_priv *priv,
 
 	__netif_tx_lock(nq, cpu);
 	/* Avoids TX time-out as we are sharing with slow path */
-	nq->trans_start = jiffies;
+	ec_txq_trans_cond_update(nq);
 
 	res = stmmac_xdp_xmit_xdpf(priv, queue, xdpf, false);
 	if (res == STMMAC_XDP_TX)
@@ -6475,7 +6484,7 @@ static int stmmac_xdp_xmit(struct net_device *dev, int num_frames,
 
 	__netif_tx_lock(nq, cpu);
 	/* Avoids TX time-out as we are sharing with slow path */
-	nq->trans_start = jiffies;
+	ec_txq_trans_cond_update(nq);
 
 	for (i = 0; i < num_frames; i++) {
 		int res;
@@ -6658,6 +6667,8 @@ int stmmac_xdp_open(struct net_device *dev)
 	bool sph_en;
 	u32 chan;
 	int ret;
+
+	BUG_ON(get_ecdev(priv));
 
 	ret = alloc_dma_desc_resources(priv);
 	if (ret < 0) {

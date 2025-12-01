@@ -9,7 +9,7 @@
 #ifndef __STMMAC_H__
 #define __STMMAC_H__
 
-#define STMMAC_RESOURCE_NAME   "stmmaceth"
+#define STMMAC_RESOURCE_NAME   "ec_stmmaceth"
 #define DRV_MODULE_VERSION	"Jan_2016"
 
 #include <linux/clk.h>
@@ -18,11 +18,18 @@
 #include <linux/stmmac.h>
 #include <linux/phylink.h>
 #include <linux/pci.h>
-#include "common.h"
+#include "common-5.15-ethercat.h"
 #include <linux/ptp_clock_kernel.h>
 #include <linux/net_tstamp.h>
 #include <linux/reset.h>
 #include <net/page_pool.h>
+#include <linux/irq_work.h>
+
+/* EtherCAT header file */
+#include "../ecdev.h"
+
+int __cold stmmac_init(void);
+void __cold stmmac_exit(void);
 
 struct stmmac_resources {
 	void __iomem *addr;
