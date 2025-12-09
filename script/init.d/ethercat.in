@@ -145,11 +145,62 @@ parse_mac_address() {
 
 #------------------------------------------------------------------------------
 
-contains_element () {
+contains_module () {
     local e match="$1"
     shift
-    for e; do [[ "$e" == "$match" ]] && return 0; done
+    # replace '-' with '_'
+    for e; do [ "${e/-/_}" = "${match/-/_}" ] && return 0; done
     return 1
+}
+
+#------------------------------------------------------------------------------
+
+bind_ec() {
+    local DEVICE_PATH=$1
+    local MODULE=$(readlink -f ${DEVICE_PATH}/driver/module | sed "s|.*/||") # get current module/driver used (i.e. igb)
+
+    # replace current module with ec module only if needed
+    if contains_module "${MODULE}" "${DEVICE_MODULES[@]}"; then
+        if ! ${MODINFO} ec_${MODULE} > /dev/null; then
+            exit_fail # ec_* module not found
+        fi
+
+        local DEVICE_ADDR=$(echo ${DEVICE_PATH} | sed "s|.*/||") # get device [[[[<domain>]:]<bus>]:][<slot>][.[<func>]]
+        local DEVICE_DRIVER=$(readlink -f ${DEVICE_PATH}/driver | sed "s|.*/||")
+        if [ "${DEVICE_DRIVER:0:3}" != "ec_" ]; then
+            local SUBSYS_DRIVERS_PATH=$(readlink -f ${DEVICE_PATH}/subsystem/drivers) # get location to other drivers for subsystem
+            if [ ! -d "${SUBSYS_DRIVERS_PATH}/ec_${DEVICE_DRIVER}" ]; then
+                exit_fail # ec driver not found
+            fi
+            echo $DEVICE_ADDR > ${DEVICE_PATH}/driver/unbind # unbind current driver
+            echo $DEVICE_ADDR > ${SUBSYS_DRIVERS_PATH}/ec_${DEVICE_DRIVER}/bind  # bind ec driver
+            # add path to file
+            echo ${DEVICE_PATH} >> ${BIND_DEVICES}
+        fi
+    fi
+}
+
+#------------------------------------------------------------------------------
+
+unbind_ec() {
+    local DEVICE_PATH=$1
+    local MODULE=$(readlink -f ${DEVICE_PATH}/driver/module | sed "s|.*/||") # get current module/driver used (i.e. igb)
+
+    if [ "${MODULE:0:3}" = "ec_" ]; then
+        local DEVICE_ADDR=$(echo ${DEVICE_PATH} | sed "s|.*/||") # get device [[[[<domain>]:]<bus>]:][<slot>][.[<func>]]
+        local DEVICE_DRIVER=$(readlink -f ${DEVICE_PATH}/driver | sed "s|.*/||")
+        if [ "${DEVICE_DRIVER:0:3}" = "ec_" ]; then
+            DEVICE_DRIVER=${DEVICE_DRIVER:3}
+            local SUBSYS_DRIVERS_PATH=$(readlink -f ${DEVICE_PATH}/subsystem/drivers) # get location to other drivers for subsystem
+            if [ ! -d "${SUBSYS_DRIVERS_PATH}/${DEVICE_DRIVER}" ]; then
+                exit_fail # driver not found
+            fi
+            echo $DEVICE_ADDR > ${DEVICE_PATH}/driver/unbind # unbind ec driver
+            echo $DEVICE_ADDR > ${SUBSYS_DRIVERS_PATH}/${DEVICE_DRIVER}/bind  # bind non-ec driver
+            # remove path from file
+            sed -i "s|^${DEVICE_PATH}$||g;/^$/d" "${BIND_DEVICES}"
+        fi
+    fi
 }
 
 #------------------------------------------------------------------------------
@@ -279,7 +330,7 @@ start)
         fi
         REPLACE_MODULE=false
         if [ ${MODULE} != "generic" ] && [ "${ENABLE_BINDING}" != true ] || \
-           contains_element "${MODULE}" "${BIND_IGNORES[@]}"; then
+           contains_module "${MODULE}" "${BIND_IGNORES[@]}"; then
             REPLACE_MODULE=true
         fi
         if [ "${REPLACE_MODULE}" = true ]; then
@@ -301,7 +352,13 @@ start)
         # load modules and unbind/bind (instead of replacing)
         [ -d $(dirname ${BIND_DEVICES}) ] || mkdir -p $(dirname ${BIND_DEVICES})
 
-        rm ${BIND_DEVICES} 2>/dev/null # clean/rm the temp file
+        unset DEV_PATHS
+        mapfile DEV_PATHS 2>/dev/null < ${BIND_DEVICES}
+        for DEV_PATH in ${DEV_PATHS[*]}; do
+            if [ -z "${DEV_PATH}" ]; then continue; fi
+            unbind_ec "${DEV_PATH}"
+        done
+
         MASTER_INDEX=0
         while true; do
             DEVICE=$(eval echo "\${MASTER${MASTER_INDEX}_DEVICE}")
@@ -319,24 +376,7 @@ start)
             fi
 
             # get current module used via name (i.e. eth0)
-            DEVLINK=$(readlink -f /sys/class/net/${DEVICE_NAME}/device)
-            MODULE=$(readlink -f ${DEVLINK}/driver/module | sed "s|.*/||") # get current module/driver used (i.e. igb)
-
-            # replace current module with ec module if needed
-            ECMODULE=ec_${MODULE}
-            if contains_element "${MODULE}" "${DEVICE_MODULES[@]}" && [ "${MODULE}" != "${ECMODULE}" ]; then
-                if ! ${MODINFO} ${ECMODULE} > /dev/null; then
-                    exit_fail # ec_* module not found
-                fi
-
-                # add link to temp file
-                echo ${DEVLINK} >> ${BIND_DEVICES}
-
-                DEV=$(echo ${DEVLINK} | sed "s|.*/||") # get device [[[[<domain>]:]<bus>]:][<slot>][.[<func>]]
-                SUB=$(readlink -f ${DEVLINK}/subsystem/drivers) # get location to other drivers for subsystem
-                echo $DEV > ${DEVLINK}/driver/unbind # unbind current driver
-                echo $DEV > ${SUB}/${ECMODULE}/bind  # bind ec driver
-            fi
+            bind_ec "$(readlink -f /sys/class/net/${DEVICE_NAME}/device)"
             MASTER_INDEX=$(expr ${MASTER_INDEX} + 1)
         done
     fi
@@ -348,21 +388,12 @@ stop)
     echo -n "Shutting down EtherCAT master @VERSION@ "
 
     if [ "${ENABLE_BINDING}" = true ]; then
-        # Get device links from temp file
-        mapfile DEVLINKS 2>/dev/null < ${BIND_DEVICES}
-        for DEVLINK in ${DEVLINKS[*]}; do
-            if [ -z "${DEVLINK}" ]; then break; fi
-
-            DEV=$(echo ${DEVLINK} | sed "s|.*/||")  # get device [[[[<domain>]:]<bus>]:][<slot>][.[<func>]]
-            MODULE=$(readlink -f ${DEVLINK}/driver/module | sed "s|.*/||") # get current module used
-            if [ "${MODULE:0:3}" == "ec_" ]; then
-                # if current module being used has "ec_" prefix unbind it and bind it to non-ec module
-                SUB=$(readlink -f ${DEVLINK}/subsystem/drivers) # get location to other drivers for subsystem
-                echo $DEV > ${DEVLINK}/driver/unbind # unbind ec driver
-                echo $DEV > ${SUB}/${MODULE:3}/bind  # bind non-ec driver
-            fi
+        unset DEV_PATHS
+        mapfile DEV_PATHS 2>/dev/null < ${BIND_DEVICES}
+        for DEV_PATH in ${DEV_PATHS[*]}; do
+            if [ -z "${DEV_PATH}" ]; then continue; fi
+            unbind_ec "${DEV_PATH}"
         done
-        rm ${BIND_DEVICES} 2>/dev/null # clean/rm the temp file
     fi
 
     # unload EtherCAT device modules
@@ -382,7 +413,7 @@ stop)
     for MODULE in ${DEVICE_MODULES}; do
         RELOAD_MODULE=false
         if [ ${MODULE} != "generic" ] && [ "${ENABLE_BINDING}" != true ] || \
-           contains_element "${MODULE}" "${BIND_IGNORES[@]}"; then
+           contains_module "${MODULE}" "${BIND_IGNORES[@]}"; then
             RELOAD_MODULE=true
         fi
         if [ "${RELOAD_MODULE}" = true ]; then
