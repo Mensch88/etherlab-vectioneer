@@ -56,7 +56,6 @@ MASTER_ARGS=
 
 #------------------------------------------------------------------------------
 
-BIND_IGNORES=( 'ccat' 'ccat_netdev' )
 BIND_DEVICES=/var/lib/ethercat/binded_devices
 
 #------------------------------------------------------------------------------
@@ -159,10 +158,25 @@ bind_ec() {
     local DEVICE_PATH=$1
     local MODULE=$(readlink -f ${DEVICE_PATH}/driver/module | sed "s|.*/||") # get current module/driver used (i.e. igb)
 
+    local BIND_DRIVER=""
+    if contains_module "${MODULE}" ${DEVICE_MODULES[@]}; then
+        BIND_DRIVER="required"
+    elif [ "${MODULE:0:3}" != "ec_" ] && contains_module "auto" ${DEVICE_MODULES[@]}; then
+        BIND_DRIVER="optional"
+    fi
+
     # replace current module with ec module only if needed
-    if contains_module "${MODULE}" "${DEVICE_MODULES[@]}"; then
+    if [ -n "$BIND_DRIVER" ]; then
         if ! ${MODINFO} ec_${MODULE} > /dev/null; then
-            exit_fail # ec_* module not found
+            if [ "$BIND_DRIVER" = "required" ]; then
+                exit_fail
+            elif ! contains_module "generic" ${DEVICE_MODULES[@]}; then
+                DEVICE_MODULES="${DEVICE_MODULES[@]} generic"
+            fi
+            return
+        elif ! ${MODPROBE} ${MODPROBE_FLAGS} ec_${MODULE}; then
+            ${MODPROBE} ${MODPROBE_FLAGS} ${MODULE}  # try restore
+            exit_fail
         fi
 
         local DEVICE_ADDR=$(echo ${DEVICE_PATH} | sed "s|.*/||") # get device [[[[<domain>]:]<bus>]:][<slot>][.[<func>]]
@@ -187,6 +201,11 @@ unbind_ec() {
     local MODULE=$(readlink -f ${DEVICE_PATH}/driver/module | sed "s|.*/||") # get current module/driver used (i.e. igb)
 
     if [ "${MODULE:0:3}" = "ec_" ]; then
+        if ! ${MODPROBE} ${MODPROBE_FLAGS} ${MODULE:3}; then
+            echo Warning: Failed to restore ${MODULE:3}.
+            return
+        fi
+
         local DEVICE_ADDR=$(echo ${DEVICE_PATH} | sed "s|.*/||") # get device [[[[<domain>]:]<bus>]:][<slot>][.[<func>]]
         local DEVICE_DRIVER=$(readlink -f ${DEVICE_PATH}/driver | sed "s|.*/||")
         if [ "${DEVICE_DRIVER:0:3}" = "ec_" ]; then
@@ -199,6 +218,10 @@ unbind_ec() {
             echo $DEVICE_ADDR > ${SUBSYS_DRIVERS_PATH}/${DEVICE_DRIVER}/bind  # bind non-ec driver
             # remove path from file
             sed -i "s|^${DEVICE_PATH}$||g;/^$/d" "${BIND_DEVICES}"
+
+            if ! contains_module "${MODULE:3}" ${DEVICE_MODULES[@]}; then
+                DEVICE_MODULES="${MODULE:3} ${DEVICE_MODULES[@]}"
+            fi
         fi
     fi
 }
@@ -322,63 +345,33 @@ start)
         exit_fail
     fi
 
-    # check for modules to replace
-    for MODULE in ${DEVICE_MODULES}; do
-        ECMODULE=ec_${MODULE}
-        if ! ${MODINFO} ${ECMODULE} > /dev/null; then
-            continue # ec_* module not found
-        fi
-        REPLACE_MODULE=false
-        if [ ${MODULE} != "generic" ] && [ "${ENABLE_BINDING}" != true ] || \
-           contains_module "${MODULE}" "${BIND_IGNORES[@]}"; then
-            REPLACE_MODULE=true
-        fi
-        if [ "${REPLACE_MODULE}" = true ]; then
-            if ${LSMOD} | grep "^${MODULE} " > /dev/null; then
-                if ! ${RMMOD} ${MODULE}; then
-                    exit_fail
-                fi
+    # load modules and bind drivers
+    [ -d $(dirname ${BIND_DEVICES}) ] || mkdir -p $(dirname ${BIND_DEVICES})
+    MASTER_INDEX=0
+    while true; do
+        DEVICE=$(eval echo "\${MASTER${MASTER_INDEX}_DEVICE}")
+        if [ -z "${DEVICE}" ]; then break; fi
+
+        # assume the input is a mac-address (1st) or device name (2nd)
+        DEVICE_NAME="${ND_MAC2NAME[${DEVICE,,}]}"
+        if [ -z "${DEVICE_NAME}" ]; then
+            DEVICE_MAC="${ND_NAME2MAC[${DEVICE}]}"
+            if [ ! -z "${DEVICE_MAC}" ]; then
+                DEVICE_NAME="${DEVICE}"
+            else
+                break
             fi
         fi
-        if ! ${MODPROBE} ${MODPROBE_FLAGS} ${ECMODULE}; then
-            if [ "${REPLACE_MODULE}" = true ]; then
-                ${MODPROBE} ${MODPROBE_FLAGS} ${MODULE} # try to restore
-            fi
-            exit_fail
-        fi
+
+        # get current module used via name (i.e. eth0)
+        bind_ec "$(readlink -f /sys/class/net/${DEVICE_NAME}/device)"
+        MASTER_INDEX=$(expr ${MASTER_INDEX} + 1)
     done
 
-    if [ "${ENABLE_BINDING}" = true ]; then
-        # load modules and unbind/bind (instead of replacing)
-        [ -d $(dirname ${BIND_DEVICES}) ] || mkdir -p $(dirname ${BIND_DEVICES})
-
-        unset DEV_PATHS
-        mapfile DEV_PATHS 2>/dev/null < ${BIND_DEVICES}
-        for DEV_PATH in ${DEV_PATHS[*]}; do
-            if [ -z "${DEV_PATH}" ]; then continue; fi
-            unbind_ec "${DEV_PATH}"
-        done
-
-        MASTER_INDEX=0
-        while true; do
-            DEVICE=$(eval echo "\${MASTER${MASTER_INDEX}_DEVICE}")
-            if [ -z "${DEVICE}" ]; then break; fi
-
-            # assume the input is a mac-address (1st) or device name (2nd)
-            DEVICE_NAME="${ND_MAC2NAME[${DEVICE,,}]}"
-            if [ -z "${DEVICE_NAME}" ]; then
-                DEVICE_MAC="${ND_NAME2MAC[${DEVICE}]}"
-                if [ ! -z "${DEVICE_MAC}" ]; then
-                    DEVICE_NAME="${DEVICE}"
-                else
-                    break
-                fi
-            fi
-
-            # get current module used via name (i.e. eth0)
-            bind_ec "$(readlink -f /sys/class/net/${DEVICE_NAME}/device)"
-            MASTER_INDEX=$(expr ${MASTER_INDEX} + 1)
-        done
+    if contains_module "generic" ${DEVICE_MODULES[@]}; then
+        if ! ${MODPROBE} ${MODPROBE_FLAGS} ec_generic; then
+            exit_fail
+        fi
     fi
 
     exit_success
@@ -387,17 +380,16 @@ start)
 stop)
     echo -n "Shutting down EtherCAT master @VERSION@ "
 
-    if [ "${ENABLE_BINDING}" = true ]; then
-        unset DEV_PATHS
-        mapfile DEV_PATHS 2>/dev/null < ${BIND_DEVICES}
-        for DEV_PATH in ${DEV_PATHS[*]}; do
-            if [ -z "${DEV_PATH}" ]; then continue; fi
-            unbind_ec "${DEV_PATH}"
-        done
-    fi
+    # unbind EtherCAT device drivers and reload previous modules
+    unset DEV_PATHS
+    mapfile DEV_PATHS 2>/dev/null < ${BIND_DEVICES}
+    for DEV_PATH in ${DEV_PATHS[*]}; do
+        if [ -z "${DEV_PATH}" ]; then continue; fi
+        unbind_ec "${DEV_PATH}"
+    done
 
     # unload EtherCAT device modules
-    for MODULE in ${DEVICE_MODULES} master; do
+    for MODULE in ${DEVICE_MODULES} generic master; do
         ECMODULE=ec_${MODULE}
         if ! ${LSMOD} | grep -q "^${ECMODULE} "; then
             continue # ec_* module not loaded
@@ -408,20 +400,6 @@ stop)
     done
 
     sleep 1
-
-    # reload previous modules
-    for MODULE in ${DEVICE_MODULES}; do
-        RELOAD_MODULE=false
-        if [ ${MODULE} != "generic" ] && [ "${ENABLE_BINDING}" != true ] || \
-           contains_module "${MODULE}" "${BIND_IGNORES[@]}"; then
-            RELOAD_MODULE=true
-        fi
-        if [ "${RELOAD_MODULE}" = true ]; then
-            if ! ${MODPROBE} ${MODPROBE_FLAGS} ${MODULE}; then
-                echo Warning: Failed to restore ${MODULE}.
-            fi
-        fi
-    done
 
     exit_success
     ;;
