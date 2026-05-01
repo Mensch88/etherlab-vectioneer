@@ -2116,9 +2116,10 @@ void ec_master_exec_slave_fsms(
                 fsm->datagram->state == EC_DATAGRAM_DEFERRED ||
                 fsm->datagram->state == EC_DATAGRAM_QUEUED ||
                 fsm->datagram->state == EC_DATAGRAM_SENT) {
-            // previous datagram was not sent or received yet.
-            // wait until next thread execution
-            return;
+            // This FSM's previous datagram is still in flight; let the
+            // other FSMs in fsm_exec_list run instead of stalling the
+            // whole iteration.
+            continue;
         }
 
         datagram = ec_master_get_external_datagram(master);
