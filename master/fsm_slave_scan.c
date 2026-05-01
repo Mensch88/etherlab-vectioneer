@@ -1691,6 +1691,9 @@ void ec_fsm_slave_scan_state_retry(
 {
     ec_slave_t *slave = fsm->slave;
 
+    // do nothing while waiting for the retry timer to elapse
+    datagram->state = EC_DATAGRAM_INVALID;
+
     fsm->scan_jiffies_start = jiffies;
     fsm->state = ec_fsm_slave_scan_state_retry_wait;
     EC_SLAVE_WARN(slave, "Retrying slave scan.\n");
@@ -1706,10 +1709,13 @@ void ec_fsm_slave_scan_state_retry_wait(
         ec_datagram_t *datagram /**< Datagram to use. */
         )
 {
+    // do nothing while waiting for the retry timer to elapse
+    datagram->state = EC_DATAGRAM_INVALID;
+
     // wait for timeout
     unsigned long diff_ms =
         (jiffies - fsm->scan_jiffies_start) * 1000 / HZ;
-        
+
     if (diff_ms >= SCAN_RETRY_TIME) {
         fsm->state = ec_fsm_slave_scan_state_start;
     }
