@@ -67,6 +67,21 @@
 /** Number of state machine retries on datagram timeout. */
 #define EC_FSM_RETRIES 3
 
+/** Maximum automatic retries after a slave configuration error before
+ * the slave becomes sticky and requires manual intervention (rescan or
+ * state request). Targets transient bring-up failures (CoE timeouts
+ * under mailbox contention, single-shot WC mismatches, etc.) without
+ * letting genuinely broken slaves loop indefinitely. */
+#define EC_CONFIG_MAX_RETRIES 3
+
+/** Minimum delay (in jiffies, ~100 ms) between automatic configuration
+ * retries. Most failure modes already pay a ~1 s CoE SDO timeout per
+ * attempt and the master FSM's round-robin over slaves provides
+ * natural spacing; this gives a real settle window for the rare
+ * fast-error path (e.g. synchronous WC=0) without burning the retry
+ * budget in microseconds. */
+#define EC_CONFIG_RETRY_BACKOFF (HZ / 10)
+
 /** If set, skip fetching SDO dictionary during slave scan. */
 #define EC_SKIP_SDO_DICT 1
 

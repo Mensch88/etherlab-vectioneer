@@ -850,6 +850,24 @@ void ec_fsm_master_state_read_al_status(
         return;
     }
 
+    // Bounded auto-retry for transient config failures. Each retry
+    // discards sii_image and triggers a re-scan, so retries always run
+    // against fresh SII data. After EC_CONFIG_MAX_RETRIES the slave
+    // stays sticky.
+    if (slave->config_retry_count < EC_CONFIG_MAX_RETRIES &&
+            time_after_eq(jiffies, slave->config_retry_next_jiffies)) {
+        EC_SLAVE_WARN(slave, "Retrying configuration (inc. slave scan)"
+                " [%u/%u].\n",
+                slave->config_retry_count + 1, EC_CONFIG_MAX_RETRIES);
+        ec_slave_discard_sii_image(slave);
+        slave->scan_required = 1;
+        slave->error_flag = 0;
+        slave->config_retry_count++;
+        slave->config_retry_next_jiffies = jiffies + EC_CONFIG_RETRY_BACKOFF;
+        ec_fsm_master_action_configure(fsm);
+        return;
+    }
+
 #ifdef EC_LOOP_CONTROL
     // read DL status
     ec_fsm_master_action_read_dl_status(fsm);

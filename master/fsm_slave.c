@@ -388,6 +388,9 @@ void ec_fsm_slave_state_config(
         // clear and let config keep re-running unbounded against the
         // broken slave.
         slave->error_flag = 1;
+    } else {
+        slave->config_retry_count = 0;
+        slave->config_retry_next_jiffies = 0;
     }
 
     slave->force_config = 0;

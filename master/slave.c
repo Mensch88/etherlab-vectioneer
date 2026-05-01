@@ -86,6 +86,8 @@ void ec_slave_init(
     slave->current_state = EC_SLAVE_STATE_UNKNOWN;
     slave->last_al_error = 0;
     slave->error_flag = 0;
+    slave->config_retry_count = 0;
+    slave->config_retry_next_jiffies = 0;
     slave->force_config = 0;
     slave->reboot = 0;
     slave->configured_rx_mailbox_offset = 0x0000;
@@ -424,6 +426,8 @@ void ec_slave_request_state(ec_slave_t *slave, /**< EtherCAT slave */
 {
     slave->requested_state = state;
     slave->error_flag = 0;
+    slave->config_retry_count = 0;
+    slave->config_retry_next_jiffies = 0;
 }
 
 /*****************************************************************************/

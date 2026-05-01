@@ -237,6 +237,11 @@ struct ec_slave
     ec_slave_state_t current_state; /**< Current application state. */
     uint16_t last_al_error; /**< Last AL state error code */
     unsigned int error_flag; /**< Stop processing after an error. */
+    unsigned int config_retry_count; /**< Automatic config retries used
+                                       since last successful configuration. */
+    unsigned long config_retry_next_jiffies; /**< Earliest jiffies value at
+                                               which the next auto-retry may
+                                               run. */
     unsigned int force_config; /**< Force (re-)configuration. */
     unsigned int reboot; /**< Request reboot */
     uint16_t configured_rx_mailbox_offset; /**< Configured receive mailbox
