@@ -210,6 +210,23 @@ void ec_slave_sii_image_init(
 
 /*****************************************************************************/
 
+/** Detach and free the slave's SII image, if any.
+ *  Removes the entry from master->sii_images so a subsequent
+ *  ec_fsm_slave_scan_enter_attach_sii() cache lookup misses and a fresh
+ *  SII walk runs.
+ */
+void ec_slave_discard_sii_image(ec_slave_t *slave /**< EtherCAT slave */)
+{
+    if (slave->sii_image) {
+        list_del(&slave->sii_image->list);
+        ec_sii_image_clear(slave->sii_image);
+        kfree(slave->sii_image);
+        slave->sii_image = NULL;
+    }
+}
+
+/*****************************************************************************/
+
 /**
    Slave destructor.
    Clears and frees a slave object.

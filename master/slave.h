@@ -304,6 +304,7 @@ void ec_slave_init(ec_slave_t *, ec_master_t *, ec_device_index_t,
         uint16_t, uint16_t);
 
 void ec_slave_sii_image_init(ec_sii_image_t *);
+void ec_slave_discard_sii_image(ec_slave_t *);
 
 void ec_slave_clear(ec_slave_t *);
 

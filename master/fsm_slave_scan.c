@@ -49,7 +49,7 @@
  * \attention Must be more than 10 to avoid problems on kernels that run with
  * a timer interupt frequency of 100 Hz.
  */
-#define SCAN_RETRY_TIME 100
+#define SCAN_RETRY_TIME 250
 
 /*****************************************************************************/
 
@@ -198,6 +198,42 @@ int ec_fsm_slave_scan_success(const ec_fsm_slave_scan_t *fsm /**< slave state ma
     return fsm->state == ec_fsm_slave_scan_state_end;
 }
 
+/*****************************************************************************/
+
+/** Routes a scan failure to retry (if budget remains) or terminal error.
+ *  Frees any partial sii_image so neither retry nor terminal error leaves a
+ *  half-populated entry attached to the slave (a fresh scan attempt would
+ *  otherwise orphan it in master->sii_images).
+ */
+static void ec_fsm_slave_scan_fail(ec_fsm_slave_scan_t *fsm)
+{
+    ec_slave_t *slave = fsm->slave;
+
+    ec_slave_discard_sii_image(slave);
+
+    if (fsm->scan_retries > 0) {
+        fsm->scan_retries--;
+        slave->error_flag = 0;
+        fsm->state = ec_fsm_slave_scan_state_retry;
+    } else {
+        slave->error_flag = 1;
+        fsm->state = ec_fsm_slave_scan_state_error;
+    }
+}
+
+/** Finishes a scan: enforces the sii_image invariant before going to state_end;
+ *  routes through the retry path if the invariant is somehow broken.
+ */
+static void ec_fsm_slave_scan_finish(ec_fsm_slave_scan_t *fsm)
+{
+    if (!fsm->slave->sii_image) {
+        EC_SLAVE_ERR(fsm->slave, "Scan finished without sii_image.\n");
+        ec_fsm_slave_scan_fail(fsm);
+        return;
+    }
+    fsm->state = ec_fsm_slave_scan_state_end;
+}
+
 /******************************************************************************
  *  slave scan state machine
  *****************************************************************************/
@@ -237,7 +273,7 @@ void ec_fsm_slave_scan_state_address(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(fsm->slave,
                 "Failed to receive station address datagram: ");
         ec_datagram_print_state(fsm->datagram);
@@ -245,8 +281,7 @@ void ec_fsm_slave_scan_state_address(
     }
 
     if (fsm->datagram->working_counter != 1) {
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(fsm->slave, "Failed to write station address: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -278,15 +313,14 @@ void ec_fsm_slave_scan_state_state(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive AL state datagram: ");
         ec_datagram_print_state(fsm->datagram);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to read AL state: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -326,15 +360,14 @@ void ec_fsm_slave_scan_state_base(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive base data datagram: ");
         ec_datagram_print_state(fsm->datagram);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to read base data: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -400,7 +433,7 @@ void ec_fsm_slave_scan_state_dc_cap(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive system time datagram: ");
         ec_datagram_print_state(fsm->datagram);
         return;
@@ -413,8 +446,7 @@ void ec_fsm_slave_scan_state_dc_cap(
         EC_SLAVE_DBG(slave, 1, "Slave has no System Time register; delay "
                 "measurement only.\n");
     } else {
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to determine, if system time register is "
                 "supported: ");
         ec_datagram_print_wc_error(fsm->datagram);
@@ -448,15 +480,14 @@ void ec_fsm_slave_scan_state_dc_times(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive system time datagram: ");
         ec_datagram_print_state(fsm->datagram);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to get DC receive times: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -584,7 +615,7 @@ void ec_fsm_slave_scan_enter_attach_sii(
         if (slave->sii_image->sii.mailbox_protocols) {
             ec_fsm_slave_scan_enter_preop(fsm, datagram);
         } else {
-            fsm->state = ec_fsm_slave_scan_state_end;
+            ec_fsm_slave_scan_finish(fsm);
         }
 #endif
     }
@@ -596,7 +627,7 @@ void ec_fsm_slave_scan_enter_attach_sii(
 
         if (!(sii_image = (ec_sii_image_t *) kmalloc(sizeof(ec_sii_image_t),
                         GFP_KERNEL))) {
-            fsm->state = ec_fsm_slave_scan_state_error;
+            ec_fsm_slave_scan_fail(fsm);
             EC_MASTER_ERR(fsm->slave->master, "Failed to allocate memory"
                     " for slave SII image.\n");
             return;
@@ -629,8 +660,7 @@ void ec_fsm_slave_scan_enter_sii_size(
             if (!(slave->vendor_words =
                           (uint16_t *) kmalloc(32, GFP_KERNEL))) {
                 EC_SLAVE_ERR(slave, "Failed to allocate 16 words of SII data.\n");
-                slave->error_flag = 1;
-                fsm->state = ec_fsm_slave_scan_state_error;
+                ec_fsm_slave_scan_fail(fsm);
                 return;
             }
         }
@@ -695,15 +725,14 @@ void ec_fsm_slave_scan_state_datalink(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive DL status datagram: ");
         ec_datagram_print_state(fsm->datagram);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to read DL status: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -788,12 +817,7 @@ void ec_fsm_slave_scan_state_sii_identity(
 
         if (!ec_fsm_sii_success(&fsm->fsm_sii)) {
             EC_SLAVE_ERR(slave, "Failed to determine SII identity\n");
-            if (fsm->scan_retries--) {
-                fsm->state = ec_fsm_slave_scan_state_retry;
-            } else {
-                fsm->slave->error_flag = 1;
-                fsm->state = ec_fsm_slave_scan_state_error;
-            }
+            ec_fsm_slave_scan_fail(fsm);
             return;
         }
 
@@ -837,8 +861,7 @@ void ec_fsm_slave_scan_state_sii_identity(
                 ec_fsm_slave_scan_enter_attach_sii(fsm, datagram);
                 return;
             default:
-                fsm->slave->error_flag = 1;
-                fsm->state = ec_fsm_slave_scan_state_error;
+                ec_fsm_slave_scan_fail(fsm);
                 EC_SLAVE_ERR(slave, "Unexpected offset %u in identity scan.\n",
                              fsm->sii_offset);
                 return;
@@ -871,12 +894,7 @@ void ec_fsm_slave_scan_state_sii_device(
         EC_SLAVE_ERR(slave, "Failed to determine product and vendor id."
                 " Reading word offset 0x%04x failed.\n",
                 fsm->sii_offset);
-        if (fsm->scan_retries--) {
-            fsm->state = ec_fsm_slave_scan_state_retry;
-        } else {
-            fsm->slave->error_flag = 1;
-            fsm->state = ec_fsm_slave_scan_state_error;
-        }
+        ec_fsm_slave_scan_fail(fsm);
         return;
     }
 
@@ -903,12 +921,7 @@ void ec_fsm_slave_scan_state_sii_device(
          (slave->sii_image->sii.product_code == 0) ) {
         EC_SLAVE_ERR(slave, "Failed to determine product and vendor id."
                 " SII returned a zero value.\n");
-        if (fsm->scan_retries--) {
-            fsm->state = ec_fsm_slave_scan_state_retry;
-        } else {
-            fsm->slave->error_flag = 1;
-            fsm->state = ec_fsm_slave_scan_state_error;
-        }
+        ec_fsm_slave_scan_fail(fsm);
         return;
     }
 
@@ -973,7 +986,7 @@ void ec_fsm_slave_scan_enter_sii_request(
 
     if (!(ctx = kmalloc(sizeof(*ctx), GFP_KERNEL))) {
         EC_SLAVE_ERR(slave, "Unable to allocate firmware request context.\n");
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         return;
     }
 
@@ -1024,11 +1037,10 @@ void ec_fsm_slave_scan_state_sii_request(
             EC_SLAVE_ERR(slave, "Failed to allocate %zu words of SII data.\n",
                 slave->sii_image->nwords);
             slave->sii_image->nwords = 0;
-            slave->error_flag = 1;
             ec_release_sii_firmware(firmware);
             fsm->sii_firmware = NULL;
 
-            fsm->state = ec_fsm_slave_scan_state_error;
+            ec_fsm_slave_scan_fail(fsm);
             return;
         }
 
@@ -1064,26 +1076,16 @@ void ec_fsm_slave_scan_state_sii_size(
 
     if (!slave->sii_image) {
         EC_SLAVE_ERR(slave, "Slave has no SII image attached!\n");
-        slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         return;
     }
 
     if (!ec_fsm_sii_success(&fsm->fsm_sii)) {
-        if (fsm->scan_retries--) {
-            EC_SLAVE_ERR(slave, "Failed to determine SII content size"
-                    " Retrying.\n");
-            fsm->state = ec_fsm_slave_scan_state_retry;
-            return;
-        } else {
-            fsm->slave->error_flag = 1;
-            fsm->state = ec_fsm_slave_scan_state_error;
-            EC_SLAVE_ERR(slave, "Failed to determine SII content size:"
-                    " Reading word offset 0x%04x failed. Assuming %u words.\n",
-                    fsm->sii_offset, EC_FIRST_SII_CATEGORY_OFFSET);
-            slave->sii_image->nwords = EC_FIRST_SII_CATEGORY_OFFSET;
-            goto alloc_sii;
-        }
+        EC_SLAVE_ERR(slave, "Failed to determine SII content size:"
+                " Reading word offset 0x%04x failed.\n",
+                fsm->sii_offset);
+        ec_fsm_slave_scan_fail(fsm);
+        return;
     }
 
     cat_type = EC_READ_U16(fsm->fsm_sii.value);
@@ -1092,9 +1094,24 @@ void ec_fsm_slave_scan_state_sii_size(
     if (cat_type != 0xFFFF) { // not the last category
         off_t next_offset = 2UL + fsm->sii_offset + cat_size;
         if (next_offset >= EC_MAX_SII_SIZE) {
+            if (fsm->scan_retries > 0) {
+                EC_SLAVE_WARN(slave, "SII size exceeds %u words"
+                        " (0xffff limiter missing? corrupt cat_size"
+                        " at offset 0x%04zx?). Retrying scan.\n",
+                        EC_MAX_SII_SIZE, (size_t)fsm->sii_offset);
+                ec_fsm_slave_scan_fail(fsm);
+                return;
+            }
+            // Retries exhausted; fall back to the upstream truncation
+            // behaviour so the slave at least gets device-identity data
+            // (vendor/product/revision/serial + mailbox offsets) and can
+            // still come up via mailbox-based config.
             EC_SLAVE_WARN(slave, "SII size exceeds %u words"
-                    " (0xffff limiter missing?).\n", EC_MAX_SII_SIZE);
-            // cut off category data...
+                    " (0xffff limiter missing? corrupt cat_size at"
+                    " offset 0x%04zx?); retries exhausted, falling"
+                    " back to %u-word SII (no category data).\n",
+                    EC_MAX_SII_SIZE, (size_t)fsm->sii_offset,
+                    EC_FIRST_SII_CATEGORY_OFFSET);
             slave->sii_image->nwords = EC_FIRST_SII_CATEGORY_OFFSET;
             goto alloc_sii;
         }
@@ -1118,8 +1135,7 @@ alloc_sii:
         EC_SLAVE_ERR(slave, "Failed to allocate %zu words of SII data.\n",
                slave->sii_image->nwords);
         slave->sii_image->nwords = 0;
-        slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         return;
     }
 
@@ -1161,19 +1177,13 @@ void ec_fsm_slave_scan_state_sii_data(
 
     if (!ec_fsm_sii_success(&fsm->fsm_sii)) {
         EC_SLAVE_ERR(slave, "Failed to fetch SII contents.\n");
-        if (fsm->scan_retries--) {
-            fsm->state = ec_fsm_slave_scan_state_retry;
-        } else {
-          fsm->slave->error_flag = 1;
-          fsm->state = ec_fsm_slave_scan_state_error;
-        }
+        ec_fsm_slave_scan_fail(fsm);
         return;
     }
 
     if (!slave->sii_image) {
         EC_SLAVE_ERR(slave, "Slave has no SII image attached!\n");
-        slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         return;
     }
 
@@ -1284,7 +1294,7 @@ void ec_fsm_slave_scan_state_sii_parse(
 
     if (slave->sii_image->nwords == EC_FIRST_SII_CATEGORY_OFFSET) {
         // sii does not contain category data
-        fsm->state = ec_fsm_slave_scan_state_end;
+        ec_fsm_slave_scan_finish(fsm);
         return;
     }
 
@@ -1362,15 +1372,14 @@ void ec_fsm_slave_scan_state_sii_parse(
     if (slave->sii_image->sii.mailbox_protocols) {
         ec_fsm_slave_scan_enter_preop(fsm, datagram);
     } else {
-        fsm->state = ec_fsm_slave_scan_state_end;
+        ec_fsm_slave_scan_finish(fsm);
     }
 #endif
     return;
 
 end:
     EC_SLAVE_ERR(slave, "Failed to analyze category data.\n");
-    fsm->slave->error_flag = 1;
-    fsm->state = ec_fsm_slave_scan_state_error;
+    ec_fsm_slave_scan_fail(fsm);
 }
 
 /*****************************************************************************/
@@ -1411,7 +1420,7 @@ void ec_fsm_slave_scan_state_regalias(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive register alias datagram: ");
         ec_datagram_print_state(fsm->datagram);
         return;
@@ -1427,15 +1436,14 @@ void ec_fsm_slave_scan_state_regalias(
 
     if (!slave->sii_image) {
         EC_SLAVE_ERR(slave, "Slave has no SII image attached!\n");
-        slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         return;
     }
 
     if (slave->sii_image->sii.mailbox_protocols) {
         ec_fsm_slave_scan_enter_preop(fsm, datagram);
     } else {
-        fsm->state = ec_fsm_slave_scan_state_end;
+        ec_fsm_slave_scan_finish(fsm);
     }
 }
 
@@ -1494,7 +1502,7 @@ void ec_fsm_slave_scan_state_preop(
         return;
 
     if (!ec_fsm_slave_config_success(fsm->fsm_slave_config)) {
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         return;
     }
 
@@ -1518,7 +1526,7 @@ void ec_fsm_slave_scan_state_sync(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive sync manager"
                 " configuration datagram: ");
         ec_datagram_print_state(fsm->datagram);
@@ -1526,8 +1534,7 @@ void ec_fsm_slave_scan_state_sync(
     }
 
     if (fsm->datagram->working_counter != 1) {
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to read DL status: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -1548,8 +1555,7 @@ void ec_fsm_slave_scan_state_sync(
 
     if (!slave->sii_image) {
         EC_SLAVE_ERR(slave, "Slave has no SII image attached!\n");
-        slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         return;
     }
 
@@ -1610,8 +1616,7 @@ void ec_fsm_slave_scan_state_mailbox_cleared(
 
     if (!slave->sii_image) {
         EC_SLAVE_ERR(slave, "Slave has no SII image attached!\n");
-        slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         return;
     }
 
@@ -1628,7 +1633,7 @@ void ec_fsm_slave_scan_state_mailbox_cleared(
         }
     }
     if (!fetch_pdos) {
-        fsm->state = ec_fsm_slave_scan_state_end;
+        ec_fsm_slave_scan_finish(fsm);
     }
     else
 #endif
@@ -1636,7 +1641,7 @@ void ec_fsm_slave_scan_state_mailbox_cleared(
         if (slave->sii_image->sii.mailbox_protocols & EC_MBOX_COE) {
             ec_fsm_slave_scan_enter_pdos(fsm, datagram);
         } else {
-            fsm->state = ec_fsm_slave_scan_state_end;
+            ec_fsm_slave_scan_finish(fsm);
         }
     }
 }
@@ -1672,12 +1677,12 @@ void ec_fsm_slave_scan_state_pdos(
     }
 
     if (!ec_fsm_pdo_success(fsm->fsm_pdo)) {
-        fsm->state = ec_fsm_slave_scan_state_error;
+        ec_fsm_slave_scan_fail(fsm);
         return;
     }
 
     // reading PDO configuration finished
-    fsm->state = ec_fsm_slave_scan_state_end;
+    ec_fsm_slave_scan_finish(fsm);
 }
 
 /*****************************************************************************/
@@ -1696,7 +1701,8 @@ void ec_fsm_slave_scan_state_retry(
 
     fsm->scan_jiffies_start = jiffies;
     fsm->state = ec_fsm_slave_scan_state_retry_wait;
-    EC_SLAVE_WARN(slave, "Retrying slave scan.\n");
+    EC_SLAVE_WARN(slave, "Retrying slave scan [%u/%u].\n",
+            EC_FSM_RETRIES - fsm->scan_retries, EC_FSM_RETRIES);
     return;
 }
 
