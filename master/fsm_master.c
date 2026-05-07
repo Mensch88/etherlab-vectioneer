@@ -374,6 +374,11 @@ void ec_fsm_master_state_broadcast(
         ec_master_clear_slaves(master);
         ec_master_clear_sii_images(master);
 
+        if (atomic_xchg(&master->initial_states_validated, 1) == 0) {
+            wake_up_interruptible(&master->initial_states_validated_queue);
+            EC_MASTER_DBG(master, 1, "Initial states validated (link down).\n");
+        }
+
         if (atomic_xchg(&master->config_busy, 0)) {
             wake_up_interruptible(&master->config_queue);
             EC_MASTER_DBG(master, 1, "Slave configuration idle (link down).\n");
@@ -420,6 +425,10 @@ void ec_fsm_master_state_broadcast(
             fsm->rescan_required = 0;
             fsm->idle = 0;
             fsm->scan_jiffies = jiffies;
+
+            // Initial states no longer validated until the next first
+            // sweep finishes with all slaves settled.
+            atomic_set_release(&master->initial_states_validated, 0);
 
             ec_master_slaves_not_available(master);
 #ifdef EC_EOE
@@ -579,6 +588,31 @@ void ec_fsm_master_action_idle(
 
 /*****************************************************************************/
 
+/** Returns 1 if every slave has either reached its requested state or
+ *  exhausted its config retries (sticky). Loose definition used by the
+ *  handover gate so a single broken slave doesn't block the master forever.
+ */
+static int ec_master_all_states_validated(ec_master_t *master)
+{
+    ec_slave_t *slave;
+
+    for (slave = master->slaves;
+            slave < master->slaves + master->slave_count;
+            slave++) {
+        if (slave->current_state == slave->requested_state) {
+            continue;
+        }
+        if (slave->error_flag &&
+                slave->config_retry_count >= EC_CONFIG_MAX_RETRIES) {
+            continue;
+        }
+        return 0;
+    }
+    return 1;
+}
+
+/*****************************************************************************/
+
 /** Master action: Get state of next slave.
  */
 void ec_fsm_master_action_next_slave_state(
@@ -596,7 +630,16 @@ void ec_fsm_master_action_next_slave_state(
         return;
     }
 
-    // all slaves processed
+    // All slaves processed. If every slave has settled (reached its
+    // requested state or exhausted retries), signal initial-states
+    // validation; the handover wait keys on this.
+    if (ec_master_all_states_validated(master)) {
+        if (atomic_xchg(&master->initial_states_validated, 1) == 0) {
+            wake_up_interruptible(&master->initial_states_validated_queue);
+            EC_MASTER_DBG(master, 1, "Initial states validated.\n");
+        }
+    }
+
     ec_fsm_master_action_idle(fsm);
 }
 

@@ -292,6 +292,9 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
 
     atomic_set_release(&master->config_busy, 0);
     init_waitqueue_head(&master->config_queue);
+    // Vacuously valid until the first scan resets it.
+    atomic_set_release(&master->initial_states_validated, 1);
+    init_waitqueue_head(&master->initial_states_validated_queue);
 
     INIT_LIST_HEAD(&master->datagram_queue);
     master->datagram_index = 0;
@@ -1014,6 +1017,20 @@ int ec_master_enter_operation_phase(
 
         EC_MASTER_DBG(master, 1, "Waiting for pending"
                 " slave scan returned.\n");
+    }
+
+    // Wait for the master FSM to validate that every slave has either
+    // reached its requested state or exhausted its config retries.
+    if (!atomic_read_acquire(&master->initial_states_validated)) {
+        ret = wait_event_interruptible(master->initial_states_validated_queue,
+                atomic_read_acquire(&master->initial_states_validated));
+        if (ret) {
+            EC_MASTER_INFO(master, "Waiting for initial states validation"
+                    " interrupted by signal.\n");
+            goto out_allow;
+        }
+
+        EC_MASTER_DBG(master, 1, "Initial states validation returned.\n");
     }
 
     // set states for all slaves

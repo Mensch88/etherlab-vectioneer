@@ -282,6 +282,14 @@ struct ec_master {
     atomic_t config_busy; /**< State of slave configuration. */
     wait_queue_head_t config_queue; /**< Queue for processes that wait for
                                       slave configuration. */
+    atomic_t initial_states_validated; /**< 1 once every slave has either
+                                          reached its requested state or
+                                          exhausted its config retries since
+                                          the most recent scan. Reset to 0
+                                          when a new scan starts. */
+    wait_queue_head_t initial_states_validated_queue; /**< Queue for processes
+                                                        waiting on initial
+                                                        states validation. */
 
     struct list_head datagram_queue; /**< Datagram queue. */
     uint8_t datagram_index; /**< Current datagram index. */
