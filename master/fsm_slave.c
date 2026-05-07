@@ -382,7 +382,12 @@ void ec_fsm_slave_state_config(
     }
 
     if (!ec_fsm_slave_config_success(&fsm->fsm_slave_config)) {
-        // TODO: mark slave_config as failed.
+        // Catch-all: any config-FSM exit that did not reach state_end
+        // must mark the slave broken. An exit that bypasses
+        // ec_fsm_slave_config_fail() would otherwise leave error_flag
+        // clear and let config keep re-running unbounded against the
+        // broken slave.
+        slave->error_flag = 1;
     }
 
     slave->force_config = 0;
