@@ -124,6 +124,15 @@ void ec_fsm_slave_config_set_dc_sync_busy(ec_fsm_slave_config_t *, unsigned int)
 
 /*****************************************************************************/
 
+/** Marks the slave broken and routes the FSM to the terminal state. */
+static void ec_fsm_slave_config_fail(ec_fsm_slave_config_t *fsm)
+{
+    fsm->slave->error_flag = 1;
+    fsm->state = ec_fsm_slave_config_state_error;
+}
+
+/*****************************************************************************/
+
 /** Constructor.
  */
 void ec_fsm_slave_config_init(
@@ -350,14 +359,13 @@ void ec_fsm_slave_config_state_clear_fmmus(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(fsm->slave, "Failed receive FMMU clearing datagram.\n");
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(fsm->slave, "Failed to clear FMMUs: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -410,15 +418,14 @@ void ec_fsm_slave_config_state_clear_sync(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(fsm->slave, "Failed receive sync manager"
                 " clearing datagram.\n");
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(fsm->slave,
                 "Failed to clear sync manager configurations: ");
         ec_datagram_print_wc_error(fsm->datagram);
@@ -467,7 +474,7 @@ void ec_fsm_slave_config_state_dc_clear_assign(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(fsm->slave, "Failed receive DC assignment"
                 " clearing datagram.\n");
         return;
@@ -502,7 +509,7 @@ void ec_fsm_slave_config_enter_mbox_sync(
     }
 
     if (!slave->sii_image) {
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Slave cannot configure SyncManager."
                 " SII data not available.\n");
         return;
@@ -646,7 +653,7 @@ void ec_fsm_slave_config_state_mbox_sync(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive sync manager"
                 " configuration datagram: ");
         ec_datagram_print_state(fsm->datagram);
@@ -667,8 +674,7 @@ void ec_fsm_slave_config_state_mbox_sync(
         unsigned long diff = fsm->datagram->jiffies_received - fsm->jiffies_start;
 
         if (diff >= HZ) {
-            slave->error_flag = 1;
-            fsm->state = ec_fsm_slave_config_state_error;
+            ec_fsm_slave_config_fail(fsm);
             EC_SLAVE_ERR(slave, "Timeout while configuring"
                     " mailbox sync managers.\n");
             return;
@@ -683,8 +689,7 @@ void ec_fsm_slave_config_state_mbox_sync(
         return;
     }
     else if (fsm->datagram->working_counter != 1) {
-        slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to set sync managers: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -912,8 +917,7 @@ void ec_fsm_slave_config_state_sdo_conf(
 
     if (!ec_fsm_coe_success(fsm->fsm_coe)) {
         EC_SLAVE_ERR(fsm->slave, "SDO configuration failed.\n");
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         return;
     }
 
@@ -993,8 +997,7 @@ void ec_fsm_slave_config_state_soe_conf_preop(
 
     if (!ec_fsm_soe_success(fsm->fsm_soe)) {
         EC_SLAVE_ERR(slave, "SoE configuration failed.\n");
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         return;
     }
 
@@ -1074,8 +1077,7 @@ void ec_fsm_slave_config_state_eoe_conf_preop(
 
     if (!ec_fsm_eoe_success(fsm->fsm_eoe)) {
         EC_SLAVE_ERR(fsm->slave, "EoE configuration failed.\n");
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         return;
     }
 
@@ -1185,7 +1187,7 @@ void ec_fsm_slave_config_state_watchdog_divider(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive watchdog divider"
                 " configuration datagram: ");
         ec_datagram_print_state(fsm->datagram);
@@ -1246,7 +1248,7 @@ void ec_fsm_slave_config_state_watchdog(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive sync manager"
                 " watchdog configuration datagram: ");
         ec_datagram_print_state(fsm->datagram);
@@ -1278,7 +1280,7 @@ void ec_fsm_slave_config_enter_pdo_sync(
     uint16_t size;
 
     if (!slave->sii_image) {
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Slave cannot configure PDO SyncManager."
                 " SII data not available.\n");
         return;
@@ -1354,7 +1356,7 @@ void ec_fsm_slave_config_state_pdo_sync(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive process data sync"
                 " manager configuration datagram: ");
         ec_datagram_print_state(fsm->datagram);
@@ -1362,8 +1364,7 @@ void ec_fsm_slave_config_state_pdo_sync(
     }
 
     if (fsm->datagram->working_counter != 1) {
-        slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to set process data sync managers: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -1392,8 +1393,7 @@ void ec_fsm_slave_config_enter_fmmu(
     }
 
     if (slave->base_fmmu_count < slave->config->used_fmmus) {
-        slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Slave has less FMMUs (%u)"
                 " than requested (%u).\n", slave->base_fmmu_count,
                 slave->config->used_fmmus);
@@ -1412,8 +1412,7 @@ void ec_fsm_slave_config_enter_fmmu(
     for (i = 0; i < slave->config->used_fmmus; i++) {
         fmmu = &slave->config->fmmu_configs[i];
         if (!(sync = ec_slave_get_sync(slave, fmmu->sync_index))) {
-            slave->error_flag = 1;
-            fsm->state = ec_fsm_slave_config_state_error;
+            ec_fsm_slave_config_fail(fsm);
             EC_SLAVE_ERR(slave, "Failed to determine PDO sync manager"
                     " for FMMU!\n");
             return;
@@ -1443,15 +1442,14 @@ void ec_fsm_slave_config_state_fmmu(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive FMMUs datagram: ");
         ec_datagram_print_state(fsm->datagram);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
-        slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to set FMMUs: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -1524,16 +1522,15 @@ void ec_fsm_slave_config_state_dc_cycle(
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
         ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive DC cycle times datagram: ");
         ec_datagram_print_state(fsm->datagram);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
-        slave->error_flag = 1;
         ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to set DC cycle times: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -1580,16 +1577,15 @@ void ec_fsm_slave_config_state_dc_sync_check(
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
         ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive DC sync check datagram: ");
         ec_datagram_print_state(fsm->datagram);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
-        slave->error_flag = 1;
         ec_fsm_slave_config_set_dc_sync_busy(fsm, 0);
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to check DC synchrony: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -1685,15 +1681,14 @@ void ec_fsm_slave_config_state_dc_start(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive DC start time datagram: ");
         ec_datagram_print_state(fsm->datagram);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
-        slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to set DC start time: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -1726,15 +1721,14 @@ void ec_fsm_slave_config_state_dc_assign(
     }
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to receive DC activation datagram: ");
         ec_datagram_print_state(fsm->datagram);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
-        slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         EC_SLAVE_ERR(slave, "Failed to activate DC: ");
         ec_datagram_print_wc_error(fsm->datagram);
         return;
@@ -1842,8 +1836,7 @@ void ec_fsm_slave_config_state_soe_conf_safeop(
 
     if (!ec_fsm_soe_success(fsm->fsm_soe)) {
         EC_SLAVE_ERR(slave, "SoE configuration failed.\n");
-        fsm->slave->error_flag = 1;
-        fsm->state = ec_fsm_slave_config_state_error;
+        ec_fsm_slave_config_fail(fsm);
         return;
     }
 
