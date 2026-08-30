@@ -1,7 +1,5 @@
 # IgH EtherCAT Master — Vectioneer fork, mirrored
 
-**Every line of code in this repository was written by other people.**
-
 This is a faithful, full-history mirror of the EtherCAT master fork maintained by
 **[Vectioneer](https://www.vectioneer.com/)** at
 
@@ -29,6 +27,20 @@ By commit count this tree is the work of:
 | Richard Hacker | 10 | |
 
 …and 26 others. `git shortlog -sn stable/vectioneer` gives the full list.
+
+**That table undercounts contributors.** For most of this project's life patches were
+applied by the maintainer and credited in the commit message, so the `author` field names
+the person who applied the patch, not the person who wrote it. `git shortlog` cannot see
+those. Contributions that reached this tree that way include:
+
+| | |
+|---|---|
+| `8b5f700d` *Distributed Clock fixes from Jun Yuan* | The `app_time_sent` correction — the master had been computing the DC system-time offset against a `jiffies`-corrected application time instead of the time the read datagram went on the wire. Also carried in the patchset as `base/0002-junyuan-dc_sync_issues.patch`, and merged into the official IgH tree as `17eddce6` |
+| `170110f7`, `10ef2c54` *Applied ethtool patch from Jun Yuan* | `e1000e` ethtool |
+| `4a858fc9` *…thanks to Jun Yuan* | compiler error in `master.c` |
+
+The patchset's own file naming — `0001-graemef-…`, `0002-junyuan-…`, `0003-frank-…`,
+`0004-gavinl-…` — is a better record of who wrote what than the git author field is.
 
 Vectioneer's contribution is not only volume. Their work since 2021 includes the RPS
 application-cycle synchronization that keeps the master's background threads out of the
