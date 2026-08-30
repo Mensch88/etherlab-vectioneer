@@ -11,9 +11,15 @@ mirror, and do not assume anything here has their review.
 
 ## Credit
 
-The history is mirrored in full — 2590 commits from 34 authors, every one keeping its
-original author, date and message. Nothing was squashed, rewritten or re-attributed.
-By commit count this tree is the work of:
+The history is mirrored in full — 2590 commits, 34 distinct author names, every one
+keeping its original author, date and message. Nothing was squashed, rewritten or
+re-attributed. That intact history, not this file, is the real record.
+
+### How attribution works in this tree
+
+Two mechanisms are in use, and you need both to see who wrote what.
+
+**The git `author` field.** By that measure:
 
 | Author | | |
 |---|---:|---|
@@ -26,27 +32,43 @@ By commit count this tree is the work of:
 | Knud Baastrup | 16 | |
 | Richard Hacker | 10 | |
 
-…and 26 others. `git shortlog -sn stable/vectioneer` gives the full list.
+…and 26 others; `git shortlog -sn stable/vectioneer` gives the full list.
 
-**That table undercounts contributors.** For most of this project's life patches were
-applied by the maintainer and credited in the commit message, so the `author` field names
-the person who applied the patch, not the person who wrote it. `git shortlog` cannot see
-those. Contributions that reached this tree that way include:
+**Credit in the commit message.** For most of this project's life — the Mercurial era,
+and the patchset — a contributor sent a patch and the maintainer applied it, naming them
+in the subject. The `author` field then records who *applied* it. **58 commits on
+`stable/vectioneer` credit someone this way**, and `git shortlog` sees none of them:
+
+```
+git log --format='%h %s' stable/vectioneer \
+  | grep -iE 'thanks to|patch(es)? (from|by)|contributed by'
+```
+
+That list includes Frank Heckenbach's frame-corruption fix (`765b9ea8`), Beckhoff's CCAT
+patches (`cf773ecf`, `8e0fab9d`), R. Roesch's FoE fixes (`994cb9a1`, `0af9fa30`),
+Patrick Bruenn on `ecdev_open()` (`7cb12f0c`), and the three below.
+
+The three are described at length because this mirror's owner wrote them, and the diffs
+were read while setting up this repository — not because they outweigh the rest of that
+list:
 
 | | |
 |---|---|
-| `8b5f700d` *Distributed Clock fixes from Jun Yuan* | The `app_time_sent` correction — the master had been computing the DC system-time offset against a `jiffies`-corrected application time instead of the time the read datagram went on the wire. Also carried in the patchset as `base/0002-junyuan-dc_sync_issues.patch`, and merged into the official IgH tree as `17eddce6` |
+| `8b5f700d` *Distributed Clock fixes from Jun Yuan* | The `app_time_sent` correction. The master had been computing the DC system-time offset against a `jiffies`-corrected application time rather than the time the read datagram actually went on the wire, so the reference slave started roughly one cycle out of lock. Also carried in the patchset as `base/0002-junyuan-dc_sync_issues.patch`, and merged into the official IgH tree as `17eddce6` |
 | `170110f7`, `10ef2c54` *Applied ethtool patch from Jun Yuan* | Corrects which `e1000e` ethtool operations are refused while EtherCAT owns the NIC: adds the `adapter->ecdev` guard to `e1000_set_rx_csum()` and `e1000_nway_reset()`, which touch hardware, and drops it from `e1000_set_tx_csum()`, which only sets a feature flag |
-| `4a858fc9` *Fixed compiler error in master.c; thanks to Jun Yuan* | Larger than the subject suggests. `ecrt_master_sdo_download_complete()` held its `ec_master_sdo_request_t` on the stack, but the request is scheduled asynchronously and released by the master through `kref_put()` — so it outlived its frame. Reworked to `kmalloc` + `kref_init`, with every error path releasing through the refcount |
+| `4a858fc9` *Fixed compiler error in master.c; thanks to Jun Yuan* | Larger than its subject suggests. `ecrt_master_sdo_download_complete()` held its `ec_master_sdo_request_t` on the stack, but the request is scheduled asynchronously and released by the master through `kref_put()` — so it outlived its frame. Reworked to `kmalloc` + `kref_init`, with every error path releasing through the refcount |
 
-The patchset's own file naming — `0001-graemef-…`, `0002-junyuan-…`, `0003-frank-…`,
-`0004-gavinl-…` — is a better record of who wrote what than the git author field is.
+The patchset's own file naming is the clearest record of all — `0001-graemef-…`,
+`0002-junyuan-…`, `0003-frank-…`, `0004-gavinl-…`, one contributor's name per patch. See
+the `patches` branch.
 
-Vectioneer's contribution is not only volume. Their work since 2021 includes the RPS
-application-cycle synchronization that keeps the master's background threads out of the
-application's send window, and the replacement of the per-slave mailbox `rt_mutex` with a
-lock-free `atomic_cmpxchg` on `read_mbox_busy`. They also carry the SII override and
-distributed-clock fixes that official `stable-1.6` does not.
+### Vectioneer's own work
+
+Not only volume. Since 2021 it includes the RPS application-cycle synchronization that
+keeps the master's background threads out of the application's send window, and the
+replacement of the per-slave mailbox `rt_mutex` with a lock-free `atomic_cmpxchg` on
+`read_mbox_busy`. They also carry the SII override and the distributed-clock fix above,
+neither of which official `stable-1.6` has.
 
 ## Why this mirror exists
 
