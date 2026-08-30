@@ -36,8 +36,8 @@ those. Contributions that reached this tree that way include:
 | | |
 |---|---|
 | `8b5f700d` *Distributed Clock fixes from Jun Yuan* | The `app_time_sent` correction — the master had been computing the DC system-time offset against a `jiffies`-corrected application time instead of the time the read datagram went on the wire. Also carried in the patchset as `base/0002-junyuan-dc_sync_issues.patch`, and merged into the official IgH tree as `17eddce6` |
-| `170110f7`, `10ef2c54` *Applied ethtool patch from Jun Yuan* | `e1000e` ethtool |
-| `4a858fc9` *…thanks to Jun Yuan* | compiler error in `master.c` |
+| `170110f7`, `10ef2c54` *Applied ethtool patch from Jun Yuan* | Corrects which `e1000e` ethtool operations are refused while EtherCAT owns the NIC: adds the `adapter->ecdev` guard to `e1000_set_rx_csum()` and `e1000_nway_reset()`, which touch hardware, and drops it from `e1000_set_tx_csum()`, which only sets a feature flag |
+| `4a858fc9` *Fixed compiler error in master.c; thanks to Jun Yuan* | Larger than the subject suggests. `ecrt_master_sdo_download_complete()` held its `ec_master_sdo_request_t` on the stack, but the request is scheduled asynchronously and released by the master through `kref_put()` — so it outlived its frame. Reworked to `kmalloc` + `kref_init`, with every error path releasing through the refcount |
 
 The patchset's own file naming — `0001-graemef-…`, `0002-junyuan-…`, `0003-frank-…`,
 `0004-gavinl-…` — is a better record of who wrote what than the git author field is.
