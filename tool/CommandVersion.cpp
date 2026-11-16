@@ -27,10 +27,12 @@
  *
  ****************************************************************************/
 
+#include <fstream>
 #include <iostream>
 using namespace std;
 
 #include "CommandVersion.h"
+#include "ecrt.h"
 
 /*****************************************************************************/
 
@@ -62,7 +64,23 @@ void CommandVersion::execute(const StringVector &args)
         throwInvalidUsageException(err);
     }
 
+    // The first line is unchanged so that scripts parsing it keep working.
     cout << "IgH EtherCAT master " << EC_MASTER_VERSION << endl;
+
+    // The package version stays 1.5.2 while this fork's interfaces differ
+    // from upstream 1.5.2 (and from 1.6). Applications must be built against
+    // the same ecrt interface as the installed library, and this tool talks
+    // to the kernel module over the ioctl interface.
+    cout << "ecrt interface " << ECRT_VER_MAJOR << "." << ECRT_VER_MINOR
+        << "." << ECRT_VER_PATCH
+        << ", ioctl interface " << EC_IOCTL_VERSION_MAGIC << endl;
+
+    // The tool and the loaded module may come from different builds.
+    ifstream module_version("/sys/module/ec_master/version");
+    string line;
+    if (module_version && getline(module_version, line)) {
+        cout << "kernel module " << line << endl;
+    }
 }
 
 /*****************************************************************************/

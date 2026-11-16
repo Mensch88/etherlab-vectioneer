@@ -40,6 +40,7 @@
 #include "globals.h"
 #include "master.h"
 #include "device.h"
+#include "ioctl.h"
 
 /*****************************************************************************/
 
@@ -133,7 +134,12 @@ int __init ec_init_module(void)
 {
     int i, ret = 0;
 
-    EC_INFO("Master driver %s\n", EC_MASTER_VERSION);
+    /* The package version stays 1.5.2 while this fork's interfaces differ
+     * from upstream 1.5.2 (and from 1.6), so name the interface versions an
+     * application or tool has to match as well. */
+    EC_INFO("Master driver %s (ecrt interface %u.%u.%u, ioctl interface %u)\n",
+            EC_MASTER_VERSION, ECRT_VER_MAJOR, ECRT_VER_MINOR, ECRT_VER_PATCH,
+            EC_IOCTL_VERSION_MAGIC);
 
     ec_lock_init(&master_sem);
 
