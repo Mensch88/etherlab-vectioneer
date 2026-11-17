@@ -1,15 +1,61 @@
-build:
-    stage: build
+# Publishes the user-space half of this master (ecrt.h, libethercat, the ethercat
+# tool) for Ubuntu 22.04 as a GitLab generic package, so that applications such as
+# broadcast/coscat build against the same ecrt interface the field machines run.
+#
+# Why this exists: the jammy build environment also carries the official IgH 1.6.x
+# in /usr/local. That master is not ABI compatible with this fork (ec_slave_info_t
+# and ec_slave_config_state_t differ), yet a binary built against its ecrt.h loads
+# this fork's libethercat without any loader error and then misreads slave state.
+# A consumer that downloads this package and points ETHERLAB_PATH at it cannot pick
+# up the wrong header by accident.
+#
+# Only user space is built here. The kernel modules are built on the target against
+# its own kernel headers; ecrt.h does not depend on the module configuration.
+#
+# Package layout: etherlab-userspace/<git describe>/etherlab-userspace-jammy.tar.gz,
+# a tree rooted at the install prefix /opt/etherlab (include/, lib/, bin/, ...).
 
-    before_script:
-        - apt update
-        - apt install -y linux-source linux-headers-4.19.0-16-all
+variables:
+  # git describe needs the history back to the last mcx-* tag.
+  GIT_DEPTH: "0"
+  PREFIX: /opt/etherlab
+  PACKAGE_NAME: etherlab-userspace
+  TARBALL: etherlab-userspace-jammy.tar.gz
 
-    script:
-        - ./bootstrap
-        - ./configure --with-linux-dir=/usr/src/linux-headers-4.19.0-16-amd64 --disable-8139too
-        - make -j8 all modules
+build_userspace_jammy:
+  tags: [jammy-build]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  script:
+    - 'REV=$(git describe --tags --always)'
+    - 'echo "$REV" > revision'
+    - ./bootstrap
+    # Same user-space options as the field installs (EoE on by default).
+    - ./configure --disable-kernel --prefix="$PREFIX" --sysconfdir="$PREFIX/etc"
+    - make -j8
+    - make install DESTDIR="$CI_PROJECT_DIR/stage"
+    # Refuse to publish anything that does not carry the fork's interface version.
+    - 'grep -q "^#define ECRT_VER_PATCH 10" "stage$PREFIX/include/ecrt.h" || { echo "ecrt.h is not interface 1.5.10"; exit 1; }'
+    - 'test -e "stage$PREFIX/lib/libethercat.so.1"'
+    - 'tar -C "stage$PREFIX" -czf "$TARBALL" .'
+    - 'echo "PACKAGE_VERSION=$REV" > package.env'
+    - 'echo "built $PACKAGE_NAME $REV"'
+  artifacts:
+    paths:
+      - $TARBALL
+    reports:
+      dotenv: package.env
+    expire_in: 1 week
 
-include:
-    - template: 'Workflows/MergeRequest-Pipelines.gitlab-ci.yml'
-        
+publish_userspace_jammy:
+  stage: .post
+  tags: [jammy-build]
+  needs: ["build_userspace_jammy"]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+  script:
+    - 'echo "publishing $PACKAGE_NAME $PACKAGE_VERSION"'
+    - 'curl --fail --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "$TARBALL" "http://gitlab:80/api/v4/projects/${CI_PROJECT_ID}/packages/generic/${PACKAGE_NAME}/${PACKAGE_VERSION}/${TARBALL}"'
