@@ -110,7 +110,7 @@ AC_ARG_WITH([linux-dir],
 
 AC_MSG_CHECKING([for Linux kernel sources])
 
-if test \! -r ${sourcedir}/.config; then
+if test \! -r ${sourcedir}/.config && { test \! -r ${sourcedir}/include/config/auto.conf || test \! -r ${sourcedir}/include/generated/autoconf.h; }; then
     echo
     AC_MSG_ERROR([No configured Linux kernel sources in $sourcedir])
 fi
