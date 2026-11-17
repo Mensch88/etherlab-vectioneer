@@ -1,6 +1,6 @@
-# Publishes the user-space half of this master (ecrt.h, libethercat, the ethercat
-# tool) for Ubuntu 22.04 as a GitLab generic package, so that applications such as
-# broadcast/coscat build against the same ecrt interface the field machines run.
+# Publishes the application build interface of this master (ecrt.h and libethercat)
+# for Ubuntu 22.04 as a GitLab generic package, so that applications build against
+# the same ecrt interface the field machines run.
 #
 # Why this exists: the jammy build environment also carries the official IgH 1.6.x
 # in /usr/local. That master is not ABI compatible with this fork (ec_slave_info_t
@@ -9,11 +9,15 @@
 # A consumer that downloads this package and points ETHERLAB_PATH at it cannot pick
 # up the wrong header by accident.
 #
-# Only user space is built here. The kernel modules are built on the target against
-# its own kernel headers; ecrt.h does not depend on the module configuration.
+# Only user space is built here, and only what an application links against. The
+# kernel modules, the ethercat tool and the runtime libethercat are built on the
+# target together: the ioctl structures they share depend on configure options such
+# as --enable-eoe, so a tool from this package could disagree with a target's module.
+# ecrt.h and the libethercat link interface do not depend on those options (outside
+# RTDM builds), so EoE is simply left off here.
 #
 # Package layout: etherlab-userspace/<git describe>/etherlab-userspace-jammy.tar.gz,
-# a tree rooted at the install prefix /opt/etherlab (include/, lib/, bin/, ...).
+# a tree rooted at the install prefix /opt/etherlab with include/ and lib/.
 
 variables:
   # git describe needs the history back to the last mcx-* tag.
@@ -32,14 +36,13 @@ build_userspace_jammy:
     - 'REV=$(git describe --tags --always)'
     - 'echo "$REV" > revision'
     - ./bootstrap
-    # Same user-space options as the field installs (EoE on by default).
-    - ./configure --disable-kernel --prefix="$PREFIX" --sysconfdir="$PREFIX/etc"
+    - ./configure --disable-kernel --disable-eoe --prefix="$PREFIX" --sysconfdir="$PREFIX/etc"
     - make -j8
     - make install DESTDIR="$CI_PROJECT_DIR/stage"
     # Refuse to publish anything that does not carry the fork's interface version.
     - 'grep -q "^#define ECRT_VER_PATCH 10" "stage$PREFIX/include/ecrt.h" || { echo "ecrt.h is not interface 1.5.10"; exit 1; }'
     - 'test -e "stage$PREFIX/lib/libethercat.so.1"'
-    - 'tar -C "stage$PREFIX" -czf "$TARBALL" .'
+    - 'tar -C "stage$PREFIX" -czf "$TARBALL" include lib'
     - 'echo "PACKAGE_VERSION=$REV" > package.env'
     - 'echo "built $PACKAGE_NAME $REV"'
   artifacts:
